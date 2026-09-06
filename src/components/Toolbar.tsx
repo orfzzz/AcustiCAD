@@ -107,7 +107,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <h1 className="font-bold text-sm sm:text-base tracking-tight text-[#1a1a1a]">
               AcustiCAD
             </h1>
-            <span className="font-normal text-[#666] text-xs">v2.5</span>
+            <span className="font-normal text-[#666] text-xs">Early</span>
             <span className="hidden xl:inline text-[11px] text-[#71717a] font-normal border-l border-[#e5e5e5] pl-2 ml-1 whitespace-nowrap">
               Diagramas Acústicos & Elétricos
             </span>
@@ -271,7 +271,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       {/* Lado Direito: Zoom, Grade e Exportação */}
       <div className="flex items-center space-x-2">
         {/* Controle de Snap e Grade */}
-        <div className="flex items-center border border-[#e5e5e5] rounded p-0.5 bg-white">
+        <div className="flex items-center border border-[#e5e5e5] rounded p-1 bg-white gap-1">
           <button
             id="snap-toggle-btn"
             onClick={onToggleSnapGrid}

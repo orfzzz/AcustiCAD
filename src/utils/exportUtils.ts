@@ -297,7 +297,7 @@ export function exportToJson(components: ComponentInstance[], wires: WireConnect
 
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'circuito_acustico_dados.json';
+  link.download = 'circuito.json';
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

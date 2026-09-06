@@ -1,4 +1,4 @@
-# AcoustiCAD
+# AcustiCAD
 
 Editor de diagramas para **analogias acústico-elétricas**, feito para ajudar nos estudos e na produção de figuras para relatórios e trabalhos acadêmicos.
 
@@ -6,7 +6,7 @@ Editor de diagramas para **analogias acústico-elétricas**, feito para ajudar n
 
 ## O que ele faz
 
-O AcoustiCAD é um editor visual (canvas SVG interativo) para montar diagramas de circuitos elétricos e suas analogias acústicas — pensado para quem estuda a **Analogia Eletroacústica** (correspondência entre grandezas elétricas e acústicas: tensão↔pressão, corrente↔vazão, resistência/indutância/capacitância↔seus análogos acústicos).
+O AcustiCAD é um editor visual (canvas SVG interativo) para montar diagramas de circuitos elétricos e suas analogias acústicas — pensado para quem estuda a **Analogia Eletroacústica** (correspondência entre grandezas elétricas e acústicas: tensão↔pressão, corrente↔vazão, resistência/indutância/capacitância↔seus análogos acústicos).
 
 ### Principais funcionalidades
 

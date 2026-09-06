@@ -105,7 +105,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </div>
           <div className="flex items-baseline gap-1.5 whitespace-nowrap">
             <h1 className="font-bold text-sm sm:text-base tracking-tight text-[#1a1a1a]">
-              AcoustiCAD
+              AcustiCAD
             </h1>
             <span className="font-normal text-[#666] text-xs">v2.5</span>
             <span className="hidden xl:inline text-[11px] text-[#71717a] font-normal border-l border-[#e5e5e5] pl-2 ml-1 whitespace-nowrap">

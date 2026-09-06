@@ -596,6 +596,7 @@ export default function App() {
           highlightedId={highlightedComponentId}   // NOVO
           tool={tool}
           onSetTool={setTool}
+          onBeginDrag={pushHistory}   // NOVO
           exportArea={exportArea}
           isDrawingExportArea={!!drawingExportArea}
           onFinishDrawExportArea={handleFinishDrawExportArea}

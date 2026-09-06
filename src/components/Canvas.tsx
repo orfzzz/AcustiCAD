@@ -18,6 +18,7 @@ interface CanvasProps {
   selectedIds: string[];
   highlightedId?: string | null; // NOVO
   tool: ActiveTool;
+  onBeginDrag?: () => void; // NOVO
   gridSize: number;
   snapGrid: boolean;
   showGrid: boolean;
@@ -47,6 +48,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   selectedIds,
   highlightedId, // NOVO
   tool,
+  onBeginDrag, // NOVO
   gridSize,
   snapGrid,
   showGrid,
@@ -98,6 +100,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     portId?: string;
   } | null>(null);
   const [wireCurrentPoint, setWireCurrentPoint] = useState<WirePoint | null>(null);
+  const [wireWaypoints, setWireWaypoints] = useState<WirePoint[]>([]); // NOVO
   const [hoveredPort, setHoveredPort] = useState<{ componentId: string; portId: string; point: WirePoint } | null>(null);
 
   // Referência para distinguir entre clique no terminal (para fio) e arrasto de componente
@@ -113,6 +116,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     setIsDrawingWire(false);
     setWireStart(null);
     setWireCurrentPoint(null);
+    setWireWaypoints([]); // NOVO
     portDownRef.current = null;
     if (tool === 'wire') {
       onSetTool?.('select');
@@ -125,6 +129,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       setIsDrawingWire(false);
       setWireStart(null);
       setWireCurrentPoint(null);
+      setWireWaypoints([]); // NOVO
       portDownRef.current = null;
     }
   }, [tool, isDrawingWire]);
@@ -271,7 +276,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (isDrawingWire && wireStart) {
       const nearPort = findNearestPort(components, canvasPt, 16);
       if (nearPort) {
-        // Conclui o fio ligando ao terminal
+        // Conclui o fio ligando ao terminal, preservando todas as dobras marcadas
         if (nearPort.componentId !== wireStart.componentId || nearPort.portId !== wireStart.portId) {
           onAddWire({
             id: `wire_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -281,13 +286,13 @@ export const Canvas: React.FC<CanvasProps> = ({
             toComponentId: nearPort.componentId,
             toPortId: nearPort.portId,
             toPoint: nearPort.point,
-            waypoints: [],
+            waypoints: wireWaypoints, // MUDOU
           });
         }
         cancelWireDrawing();
       } else {
-        // Clicou no espaço vazio enquanto desenhava fio: cancela o fio e libera a ferramenta!
-        cancelWireDrawing();
+        // Clicou no espaço vazio: adiciona uma dobra (waypoint) no fio em vez de cancelar
+        setWireWaypoints((prev) => [...prev, canvasPt]); // MUDOU
       }
       return;
     }
@@ -367,7 +372,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
 
     // Detecta se está perto de alguma porta para highlight magnético
-    const near = findNearestPort(components, canvasPt, 16);
+    const near = (tool === 'wire' || isDrawingWire) ? findNearestPort(components, canvasPt, 16) : null;
     setHoveredPort(near);
 
     // Se estiver desenhando fio (rubber band)
@@ -532,6 +537,24 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
   };
 
+  // Termina o fio em um ponto livre (sem conectar a um terminal), via duplo-clique
+  const handleSvgDoubleClick = (e: React.MouseEvent) => {
+    if (!isDrawingWire || !wireStart) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const canvasPt = screenToCanvas(e.clientX, e.clientY);
+
+    onAddWire({
+      id: `wire_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      fromComponentId: wireStart.componentId,
+      fromPortId: wireStart.portId,
+      fromPoint: wireStart.point,
+      toPoint: canvasPt,
+      waypoints: wireWaypoints,
+    });
+    cancelWireDrawing();
+  };
+  
   // Início de arrasto ao clicar em um componente
   const handleComponentMouseDown = (comp: ComponentInstance, e: React.MouseEvent) => {
     if (isDrawingExportArea) {
@@ -551,6 +574,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (e.button !== 0) return; // apenas botão esquerdo
 
     e.stopPropagation();
+    onBeginDrag?.(); // NOVO
 
     // Se o componente não estiver selecionado, seleciona ele
     let newSelected = selectedIds;
@@ -612,7 +636,7 @@ export const Canvas: React.FC<CanvasProps> = ({
           toComponentId: comp.id,
           toPortId: portId,
           toPoint: portPos,
-          waypoints: [],
+          waypoints: wireWaypoints, // MUDOU
         });
       }
       cancelWireDrawing();
@@ -635,6 +659,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     // 3. Se estiver na ferramenta de seleção (tool === 'select'):
     // Prepara seleção e arrasto do componente normalmente para que o usuário consiga mover o componente
+    onBeginDrag?.(); // NOVO
     let newSelected = selectedIds;
     if (!selectedIds.includes(comp.id)) {
       if (e.shiftKey) {
@@ -680,6 +705,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     if (e.button !== 0) return;
     e.stopPropagation();
+    onBeginDrag?.(); // NOVO
 
     // Se o componente não estiver selecionado, seleciona ele
     if (!selectedIds.includes(comp.id)) {
@@ -791,7 +817,9 @@ export const Canvas: React.FC<CanvasProps> = ({
         >
           <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
           <span className="font-semibold text-xs text-[#111]">Modo Fio ativo:</span>
-          <span className="text-[#666] text-[11px]">Clique em outro terminal para ligar</span>
+          <span className="text-[#666] text-[11px]">
+            Clique para dobrar · Clique em terminal para ligar · Duplo-clique para soltar
+          </span>
           <div className="w-px h-3.5 bg-[#e5e5e5] mx-1"></div>
           <button
             type="button"
@@ -816,6 +844,7 @@ export const Canvas: React.FC<CanvasProps> = ({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
+        onDoubleClick={handleSvgDoubleClick}
       >
         <defs>
           {/* Padrão de Grade (Grid) */}
@@ -915,7 +944,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                         id: 'temp',
                         fromPoint: wireStart.point,
                         toPoint: wireCurrentPoint,
-                        waypoints: [],
+                        waypoints: wireWaypoints, // MUDOU
                       },
                       components
                     )
@@ -925,6 +954,10 @@ export const Canvas: React.FC<CanvasProps> = ({
                   strokeWidth={1.8}
                   strokeDasharray="4 3"
                 />
+                {/* Marca cada dobra já confirmada */}
+                {wireWaypoints.map((wp, idx) => (
+                  <circle key={`wp-${idx}`} cx={wp.x} cy={wp.y} r={3.5} fill="#2563eb" stroke="white" strokeWidth={1} />
+                ))}
                 <circle
                   cx={wireCurrentPoint.x}
                   cy={wireCurrentPoint.y}
@@ -994,6 +1027,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                 stroke="#2563eb"
                 strokeWidth={2}
                 className="animate-ping"
+                style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
               />
             )}
 

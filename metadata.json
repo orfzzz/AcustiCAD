@@ -1,0 +1,8 @@
+{
+  "name": "Remix Editor de Circuitos Acústicos e Elétricos",
+  "description": "Editor vetorial para diagramas de circuitos acústicos (analogias acústicas) e elétricos equivalentes com exportação em alta resolução.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

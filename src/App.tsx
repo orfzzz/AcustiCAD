@@ -17,6 +17,7 @@ import { PropertyPanel } from './components/PropertyPanel';
 import { exportToPng, exportToSvg, exportToJson } from './utils/exportUtils';
 import { exportSingleHtmlApp } from './utils/singleHtmlExport';
 import { snapToGrid, findNearestPointOnWires } from './utils/geometry';
+import { Layers, Sliders } from 'lucide-react';
 
 const MAX_HISTORY = 30;
 
@@ -27,6 +28,7 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [tool, setTool] = useState<ActiveTool>('select');
   const [highlightedComponentId, setHighlightedComponentId] = useState<string | null>(null); // NOVO
+  const [mobileDrawer, setMobileDrawer] = useState<'components' | 'properties' | null>(null); // Gaveta mobile/tablet
 
   // Área demarcada de exportação selecionada pelo usuário
   const [exportArea, setExportArea] = useState<ExportArea | null>(null);
@@ -186,6 +188,9 @@ export default function App() {
 
       setComponents((prev) => [...prev, newComp]);
       setSelectedIds([newId]);
+      if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+        setMobileDrawer(null);
+      }
     },
     [pushHistory, snapGrid, gridSize, pan, wires, components, defaultOrientation, defaultLabelPosition]
   );
@@ -360,6 +365,20 @@ export default function App() {
         prev.map((c) => {
           const u = updateMap.get(c.id);
           return u ? { ...c, ...u } : c;
+        })
+      );
+    },
+    []
+  );
+
+  // Atualiza os waypoints de um ou mais fios (usado ao mover componentes conectados, para arrastar as dobras junto)
+  const handleUpdateWires = useCallback(
+    (updates: Array<{ id: string; waypoints: WirePoint[] }>) => {
+      const updateMap = new Map(updates.map((u) => [u.id, u.waypoints]));
+      setWires((prev) =>
+        prev.map((w) => {
+          const wp = updateMap.get(w.id);
+          return wp ? { ...w, waypoints: wp } : w;
         })
       );
     },
@@ -585,7 +604,17 @@ export default function App() {
 
       {/* Área Central: Sidebar Esquerda + Canvas + Painel de Propriedades à Direita */}
       <div className="flex flex-1 overflow-hidden relative">
+        {/* Backdrop para fechar gavetas no mobile/tablet */}
+        {mobileDrawer && (
+          <div
+            className="fixed inset-0 bg-black/40 z-30 lg:hidden backdrop-blur-xs transition-opacity"
+            onClick={() => setMobileDrawer(null)}
+          />
+        )}
+
         <Sidebar
+          isOpen={mobileDrawer === 'components'}
+          onClose={() => setMobileDrawer(null)}
           onAddComponent={(type) => handleAddComponent(type)}
         />
 
@@ -597,7 +626,9 @@ export default function App() {
           tool={tool}
           onSetTool={setTool}
           onBeginDrag={pushHistory}   // NOVO
+          onUpdateWires={handleUpdateWires}   // NOVO
           exportArea={exportArea}
+          onClearExportArea={() => setExportArea(null)}   // NOVO
           isDrawingExportArea={!!drawingExportArea}
           onFinishDrawExportArea={handleFinishDrawExportArea}
           onCancelDrawExportArea={() => setDrawingExportArea(null)}
@@ -621,6 +652,8 @@ export default function App() {
         />
 
         <PropertyPanel
+          isOpen={mobileDrawer === 'properties'}
+          onClose={() => setMobileDrawer(null)}
           selectedComponents={selectedComponents}
           selectedWires={selectedWires}
           onUpdateComponent={handleUpdateComponent}
@@ -642,26 +675,58 @@ export default function App() {
         />
       </div>
 
+      {/* Barra flutuante de navegação rápida para Celulares e Tablets (< lg) */}
+      <div className="lg:hidden fixed bottom-9 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 bg-white/95 backdrop-blur-md border border-[#e5e5e5] shadow-lg px-2.5 py-1.5 rounded-full text-xs font-medium select-none">
+        <button
+          type="button"
+          onClick={() => setMobileDrawer(mobileDrawer === 'components' ? null : 'components')}
+          className={`px-3 py-1.5 rounded-full flex items-center gap-1.5 transition-colors cursor-pointer ${
+            mobileDrawer === 'components'
+              ? 'bg-black text-white'
+              : 'text-[#1a1a1a] hover:bg-[#f5f5f5]'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>Componentes</span>
+        </button>
+        <div className="w-px h-4 bg-[#e5e5e5]" />
+        <button
+          type="button"
+          onClick={() => setMobileDrawer(mobileDrawer === 'properties' ? null : 'properties')}
+          className={`px-3 py-1.5 rounded-full flex items-center gap-1.5 transition-colors cursor-pointer ${
+            mobileDrawer === 'properties'
+              ? 'bg-black text-white'
+              : 'text-[#1a1a1a] hover:bg-[#f5f5f5]'
+          }`}
+        >
+          <Sliders className="w-3.5 h-3.5" />
+          <span>Propriedades</span>
+          {selectedIds.length > 0 && (
+            <span className="px-1.5 py-0.2 bg-blue-600 text-white rounded-full text-[10px] font-bold">
+              {selectedIds.length}
+            </span>
+          )}
+        </button>
+      </div>
+
       {/* Barra de Status */}
-      <footer className="h-6 bg-[#f5f5f5] border-t border-[#e5e5e5] flex items-center justify-between px-3.5 text-[10px] text-[#888] shrink-0 select-none">
-        <div className="flex items-center gap-4">
+      <footer className="h-6 bg-[#f5f5f5] border-t border-[#e5e5e5] flex items-center justify-between px-3 sm:px-3.5 text-[10px] text-[#888] shrink-0 select-none overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
           <span className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            Sistema: Pronto
           </span>
-          <span>Grade: {gridSize}px ({snapGrid ? 'Snap Ativo' : 'Snap Desligado'})</span>
-          <span>Unidades: MKS Acústico</span>
+          <span>Grade: {gridSize}px ({snapGrid ? 'Snap Ativo' : 'Snap Off'})</span>
           <span className="hidden sm:inline">Elementos: {components.length} | Conexões: {wires.length}</span>
           {exportArea && (
             <span className="text-amber-700 font-medium">
-              Área de corte: {Math.round(exportArea.width)}×{Math.round(exportArea.height)}px
+              Área: {Math.round(exportArea.width)}×{Math.round(exportArea.height)}px
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-[#444]">Editor de Diagramas Acústicos &amp; Elétricos</span>
-          <div className="w-px h-3 bg-[#ddd]"></div>
-          <span>Apostila Analogias Acústicas</span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="hidden md:inline font-medium text-[#444]">Editor de Diagramas Acústicos &amp; Elétricos</span>
+          <div className="hidden md:block w-px h-3 bg-[#ddd]"></div>
+          <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline transition-colors"> github.com/orfzzz </a>
         </div>
       </footer>
 

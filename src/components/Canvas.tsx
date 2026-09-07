@@ -26,12 +26,14 @@ interface CanvasProps {
   pan: { x: number; y: number };
   svgRef: React.RefObject<SVGSVGElement | null>;
   exportArea?: { x: number; y: number; width: number; height: number } | null;
+  onClearExportArea?: () => void; // NOVO
   isDrawingExportArea?: boolean;
   onFinishDrawExportArea?: (bounds: { x: number; y: number; width: number; height: number }) => void;
   onCancelDrawExportArea?: () => void;
   onSelect: (ids: string[], isMulti?: boolean) => void;
   onUpdateComponent: (id: string, updates: Partial<ComponentInstance>) => void;
   onUpdateComponents: (updates: Array<{ id: string; updates: Partial<ComponentInstance> }>) => void;
+  onUpdateWires?: (updates: Array<{ id: string; waypoints: WirePoint[] }>) => void; // NOVO
   onAddWire: (wire: WireConnection) => void;
   onDeleteSelected: () => void;
   onPanChange: (pan: { x: number; y: number }) => void;
@@ -56,12 +58,14 @@ export const Canvas: React.FC<CanvasProps> = ({
   pan,
   svgRef,
   exportArea,
+  onClearExportArea, // NOVO
   isDrawingExportArea,
   onFinishDrawExportArea,
   onCancelDrawExportArea,
   onSelect,
   onUpdateComponent,
   onUpdateComponents,
+  onUpdateWires, // NOVO
   onAddWire,
   onPanChange,
   onZoomChange,
@@ -72,7 +76,12 @@ export const Canvas: React.FC<CanvasProps> = ({
 }) => {
   // Estados de arrasto de componentes
   const [isDraggingComp, setIsDraggingComp] = useState(false);
-  const dragStartRef = useRef<{ mouseX: number; mouseY: number; initialPositions: Record<string, { x: number; y: number }> } | null>(null);
+  const dragStartRef = useRef<{
+    mouseX: number;
+    mouseY: number;
+    initialPositions: Record<string, { x: number; y: number }>;
+    initialWireWaypoints: Record<string, WirePoint[]>;
+  } | null>(null);
 
   // Estados de desenho de área de exportação
   const [exportDrawBox, setExportDrawBox] = useState<{
@@ -316,7 +325,6 @@ export const Canvas: React.FC<CanvasProps> = ({
       const nearWire = findNearestPointOnWires(wires, components, canvasPt, 24, gridSize);
       const nodePt = nearWire || canvasPt;
       onAddComponentAt('node', nodePt);
-      onSetTool?.('select');
       return;
     }
 
@@ -409,8 +417,30 @@ export const Canvas: React.FC<CanvasProps> = ({
       const dxRaw = (e.clientX - dragStartRef.current.mouseX) / zoom;
       const dyRaw = (e.clientY - dragStartRef.current.mouseY) / zoom;
 
-      const dx = snapGrid ? snapToGrid(dxRaw, gridSize) : Math.round(dxRaw);
-      const dy = snapGrid ? snapToGrid(dyRaw, gridSize) : Math.round(dyRaw);
+      let dx = snapGrid ? snapToGrid(dxRaw, gridSize) : Math.round(dxRaw);
+      let dy = snapGrid ? snapToGrid(dyRaw, gridSize) : Math.round(dyRaw);
+
+      // Limita dx/dy para que nenhum componente selecionado ultrapasse a borda (x,y >= 0),
+      // garantindo que fios e componentes se movam sempre pelo MESMO deslocamento
+      for (const id of selectedIds) {
+        const initial = dragStartRef.current.initialPositions[id];
+        if (!initial) continue;
+        if (initial.x + dx < 0) dx = -initial.x;
+        if (initial.y + dy < 0) dy = -initial.y;
+      }
+
+      // Move junto os waypoints dos fios cujos dois terminais fazem parte do arrasto,
+      // preservando o formato do fio quando o circuito inteiro é movido
+      if (onUpdateWires) {
+        const waypointEntries = Object.entries(dragStartRef.current.initialWireWaypoints);
+        if (waypointEntries.length > 0) {
+          const wireUpdates = waypointEntries.map(([wireId, initialWps]) => ({
+            id: wireId,
+            waypoints: initialWps.map((wp) => ({ x: wp.x + dx, y: wp.y + dy })),
+          }));
+          onUpdateWires(wireUpdates);
+        }
+      }
 
       // Se estiver arrastando um único componente e ele for um 'node', tenta encaixar diretamente no fio mais próximo
       const singleNodeId = selectedIds.length === 1 ? selectedIds[0] : null;
@@ -554,7 +584,128 @@ export const Canvas: React.FC<CanvasProps> = ({
     });
     cancelWireDrawing();
   };
+
+  // Suporte a Touch para Celulares e Tablets (1 dedo: seleção/arrasto; 2 dedos: pinch-to-zoom e pan)
+  const touchStartRef = useRef<{
+    x: number;
+    y: number;
+    dist?: number;
+    panX: number;
+    panY: number;
+    initialZoom: number;
+  } | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      touchStartRef.current = {
+        x: (t1.clientX + t2.clientX) / 2,
+        y: (t1.clientY + t2.clientY) / 2,
+        dist,
+        panX: pan.x,
+        panY: pan.y,
+        initialZoom: zoom,
+      };
+      return;
+    }
+
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      if (tool === 'pan') {
+        setIsPanning(true);
+        panStartRef.current = {
+          mouseX: touch.clientX,
+          mouseY: touch.clientY,
+          panX: pan.x,
+          panY: pan.y,
+        };
+        return;
+      }
+
+      handleMouseDown({
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        button: 0,
+        shiftKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        preventDefault: () => e.preventDefault(),
+        stopPropagation: () => e.stopPropagation(),
+      } as unknown as React.MouseEvent);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && touchStartRef.current && touchStartRef.current.dist) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      const scale = currentDist / touchStartRef.current.dist;
+      const newZoom = Math.min(Math.max(touchStartRef.current.initialZoom * scale, 0.25), 4);
+      onZoomChange(Number(newZoom.toFixed(2)));
+
+      const centerX = (t1.clientX + t2.clientX) / 2;
+      const centerY = (t1.clientY + t2.clientY) / 2;
+      onPanChange({
+        x: touchStartRef.current.panX + (centerX - touchStartRef.current.x),
+        y: touchStartRef.current.panY + (centerY - touchStartRef.current.y),
+      });
+      return;
+    }
+
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      if (isPanning && panStartRef.current) {
+        onPanChange({
+          x: panStartRef.current.panX + (touch.clientX - panStartRef.current.mouseX),
+          y: panStartRef.current.panY + (touch.clientY - panStartRef.current.mouseY),
+        });
+        return;
+      }
+
+      handleMouseMove({
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        preventDefault: () => e.preventDefault(),
+        stopPropagation: () => e.stopPropagation(),
+      } as unknown as React.MouseEvent);
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    touchStartRef.current = null;
+    if (isPanning) {
+      setIsPanning(false);
+      panStartRef.current = null;
+    }
+    const touch = e.changedTouches?.[0];
+    handleMouseUp({
+      clientX: touch ? touch.clientX : 0,
+      clientY: touch ? touch.clientY : 0,
+      preventDefault: () => e.preventDefault(),
+      stopPropagation: () => e.stopPropagation(),
+    } as unknown as React.MouseEvent);
+  };
   
+  // Coleta os waypoints atuais dos fios cujos dois terminais pertencem ao grupo que será arrastado
+  const collectInitialWireWaypoints = (compIds: string[]): Record<string, WirePoint[]> => {
+    const idSet = new Set(compIds);
+    const map: Record<string, WirePoint[]> = {};
+    for (const wire of wires) {
+      if (
+        wire.waypoints &&
+        wire.waypoints.length > 0 &&
+        wire.fromComponentId && idSet.has(wire.fromComponentId) &&
+        wire.toComponentId && idSet.has(wire.toComponentId)
+      ) {
+        map[wire.id] = wire.waypoints.map((wp) => ({ ...wp }));
+      }
+    }
+    return map;
+  };
+
   // Início de arrasto ao clicar em um componente
   const handleComponentMouseDown = (comp: ComponentInstance, e: React.MouseEvent) => {
     if (isDrawingExportArea) {
@@ -601,6 +752,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       mouseX: e.clientX,
       mouseY: e.clientY,
       initialPositions,
+      initialWireWaypoints: collectInitialWireWaypoints(newSelected), // NOVO
     };
   };
 
@@ -684,6 +836,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       mouseX: e.clientX,
       mouseY: e.clientY,
       initialPositions,
+      initialWireWaypoints: collectInitialWireWaypoints(newSelected), // NOVO
     };
 
     // Armazena o clique no terminal: caso o usuário solte o mouse sem mover (sem arrastar),
@@ -746,7 +899,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   return (
     <div
       id="diagram-canvas-container"
-      className="relative w-full h-full overflow-hidden select-none bg-[#fdfdfd] flex-1"
+      className="relative w-full h-full overflow-hidden select-none bg-[#fdfdfd] flex-1 touch-none"
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       onWheel={handleWheel}
@@ -813,14 +966,17 @@ export const Canvas: React.FC<CanvasProps> = ({
       {isDrawingWire && (
         <div
           id="wire-active-banner"
-          className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-white/95 backdrop-blur-xs border border-[#e5e5e5] shadow-md px-3.5 py-1.5 rounded-full text-xs text-[#1a1a1a] select-none pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-150"
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 sm:gap-2 bg-white/95 backdrop-blur-xs border border-[#e5e5e5] shadow-md px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs text-[#1a1a1a] select-none pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-150 whitespace-nowrap max-w-[92vw]"
         >
-          <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-          <span className="font-semibold text-xs text-[#111]">Modo Fio ativo:</span>
-          <span className="text-[#666] text-[11px]">
+          <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse shrink-0"></span>
+          <span className="font-semibold text-[11px] sm:text-xs text-[#111] shrink-0">
+            <span className="hidden sm:inline">Modo Fio ativo</span>
+            <span className="sm:hidden">Fio</span>
+          </span>
+          <span className="hidden md:inline text-[#666] text-[11px]">
             Clique para dobrar · Clique em terminal para ligar · Duplo-clique para soltar
           </span>
-          <div className="w-px h-3.5 bg-[#e5e5e5] mx-1"></div>
+          <div className="w-px h-3.5 bg-[#e5e5e5] mx-0.5 sm:mx-1 shrink-0"></div>
           <button
             type="button"
             id="btn-cancel-wire"
@@ -828,11 +984,11 @@ export const Canvas: React.FC<CanvasProps> = ({
               e.stopPropagation();
               cancelWireDrawing();
             }}
-            className="px-2.5 py-0.5 bg-[#f5f5f5] hover:bg-[#e5e5e5] active:bg-[#d4d4d4] text-[#333] border border-[#d4d4d4] rounded text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+            className="px-2 sm:px-2.5 py-0.5 bg-[#f5f5f5] hover:bg-[#e5e5e5] active:bg-[#d4d4d4] text-[#333] border border-[#d4d4d4] rounded text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer shrink-0"
             title="Cancelar conexão de fio (Esc ou botão direito)"
           >
             <span>✕</span>
-            <span>Cancelar (Esc)</span>
+            <span className="hidden sm:inline">Cancelar (Esc)</span>
           </button>
         </div>
       )}
@@ -840,11 +996,15 @@ export const Canvas: React.FC<CanvasProps> = ({
       <svg
         id="diagram-svg"
         ref={svgRef}
-        className="w-full h-full block"
+        className="w-full h-full block touch-none"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onDoubleClick={handleSvgDoubleClick}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
       >
         <defs>
           {/* Padrão de Grade (Grid) */}
@@ -900,6 +1060,11 @@ export const Canvas: React.FC<CanvasProps> = ({
                     }
                     e.stopPropagation();
                     onSelect([wire.id], e.shiftKey);
+                  }}
+                  onTouchStart={(e) => {
+                    if (isDrawingExportArea) return;
+                    e.stopPropagation();
+                    onSelect([wire.id], false);
                   }}
                 >
                   {/* Área invisível mais grossa para facilitar o clique no fio */}
@@ -976,6 +1141,19 @@ export const Canvas: React.FC<CanvasProps> = ({
                 <g
                   key={comp.id}
                   onMouseDown={(e) => handleComponentMouseDown(comp, e)}
+                  onTouchStart={(e) => {
+                    if (e.touches.length === 1) {
+                      const t = e.touches[0];
+                      handleComponentMouseDown(comp, {
+                        clientX: t.clientX,
+                        clientY: t.clientY,
+                        button: 0,
+                        shiftKey: false,
+                        stopPropagation: () => e.stopPropagation(),
+                        preventDefault: () => e.preventDefault(),
+                      } as unknown as React.MouseEvent);
+                    }
+                  }}
                   onDoubleClick={() => onComponentDoubleClick?.(comp)}
                   className="cursor-move"
                 >
@@ -1063,6 +1241,19 @@ export const Canvas: React.FC<CanvasProps> = ({
                   <text x={6} y={-3} fill="#ffffff" fontSize={10} fontFamily="sans-serif" fontWeight="bold">
                     Área Demarcada ({Math.round(exportArea.width)}×{Math.round(exportArea.height)})
                   </text>
+                  {/* Botão de fechar/remover a área, no canto da faixa de rótulo */}
+                  <g
+                    transform="translate(146, -14)"
+                    className="cursor-pointer pointer-events-auto"
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      onClearExportArea?.();
+                    }}
+                  >
+                    <rect x={0} y={0} width={16} height={16} rx={3} fill="#dc2626" />
+                    <line x1={4} y1={4} x2={12} y2={12} stroke="white" strokeWidth={1.6} strokeLinecap="round" />
+                    <line x1={12} y1={4} x2={4} y2={12} stroke="white" strokeWidth={1.6} strokeLinecap="round" />
+                  </g>
                 </g>
               </g>
             )}
@@ -1106,8 +1297,8 @@ export const Canvas: React.FC<CanvasProps> = ({
         </g>
       </svg>
 
-      {/* High Density Coordinates Overlay */}
-      <div className="absolute bottom-3 left-3 text-[10px] font-mono text-[#888] bg-white/90 border border-[#e5e5e5] px-2.5 py-0.5 rounded shadow-2xs z-10 pointer-events-none select-none flex items-center gap-2">
+      {/* High Density Coordinates Overlay (visível em telas médias e grandes para não sobrepor a barra móvel) */}
+      <div className="hidden md:flex absolute bottom-3 left-3 text-[10px] font-mono text-[#888] bg-white/90 border border-[#e5e5e5] px-2.5 py-0.5 rounded shadow-2xs z-10 pointer-events-none select-none items-center gap-2">
         <span>X: {cursorCoords.x}px</span>
         <span className="text-[#e5e5e5]">|</span>
         <span>Y: {cursorCoords.y}px</span>

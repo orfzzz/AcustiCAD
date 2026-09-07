@@ -23,6 +23,7 @@ import {
   Copy,
   Clipboard,
   ChevronDown,
+  MoreHorizontal,
 } from 'lucide-react';
 
 interface ToolbarProps {
@@ -89,39 +90,40 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onClearDiagram,
 }) => {
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   return (
     <header
       id="main-toolbar"
-      className="h-14 bg-white border-b border-[#e5e5e5] px-4 sm:px-6 py-2 flex items-center justify-between gap-3 sm:gap-4 select-none z-30 shadow-xs text-[#1a1a1a] shrink-0 relative"
+      className="h-14 bg-white border-b border-[#e5e5e5] px-2 sm:px-6 py-2 flex items-center justify-between gap-1.5 sm:gap-4 select-none z-50 shadow-xs text-[#1a1a1a] shrink-0 relative"
     >
       {/* Lado Esquerdo: Identidade do App e Ferramentas Principais */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2.5 mr-1 shrink-0">
-          <div className="w-8 h-8 bg-black flex items-center justify-center rounded-md text-white shadow-xs shrink-0">
-            <div className="w-4 h-4 border-2 border-white rounded-full flex items-center justify-center">
-              <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
+      <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
+        <div className="flex items-center gap-1 sm:gap-2 mr-0.5 sm:mr-1 shrink-0">
+          <div className="w-6 h-6 sm:w-8 sm:h-8 bg-black flex items-center justify-center rounded-md text-white shadow-xs shrink-0">
+            <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-white rounded-full flex items-center justify-center">
+              <div className="w-1 h-1 sm:w-1.5 sm:h-1.5 bg-white rounded-full"></div>
             </div>
           </div>
-          <div className="flex items-baseline gap-1.5 whitespace-nowrap">
-            <h1 className="font-bold text-sm sm:text-base tracking-tight text-[#1a1a1a]">
+          <div className="flex flex-col sm:flex-row sm:items-baseline gap-0 sm:gap-1 leading-none whitespace-nowrap">
+            <h1 className="font-bold text-xs sm:text-base tracking-tight text-[#1a1a1a] leading-tight">
               AcustiCAD
             </h1>
-            <span className="font-normal text-[#666] text-xs">Early</span>
-            <span className="hidden xl:inline text-[11px] text-[#71717a] font-normal border-l border-[#e5e5e5] pl-2 ml-1 whitespace-nowrap">
+            <span className="font-normal text-[#666] text-[9px] sm:text-xs leading-tight">Early</span>
+            {/*<span className="hidden xl:inline text-[11px] text-[#71717a] font-normal border-l border-[#e5e5e5] pl-2 ml-1 whitespace-nowrap">
               Diagramas Acústicos & Elétricos
-            </span>
+            </span>*/}
           </div>
         </div>
 
-        <div className="h-6 w-px bg-[#e5e5e5]" />
+        <div className="hidden sm:block h-6 w-px bg-[#e5e5e5]" />
 
         {/* Seletores de Ferramenta Principal */}
-        <nav className="flex bg-[#f0f0f0] rounded-md p-0.5 border border-[#e5e5e5]">
+        <nav className="flex bg-[#f0f0f0] rounded-md p-0.5 border border-[#e5e5e5] shrink-0">
           <button
             id="tool-select-btn"
             onClick={() => onSetTool('select')}
-            className={`px-3 py-1.5 rounded text-xs transition-colors flex items-center gap-1.5 ${
+            className={`p-1 sm:px-3 sm:py-1.5 rounded text-xs transition-colors flex items-center gap-1.5 ${
               tool === 'select'
                 ? 'bg-white text-[#1a1a1a] shadow-xs font-semibold'
                 : 'text-[#666] hover:text-black font-medium'
@@ -135,12 +137,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <button
             id="tool-wire-btn"
             onClick={() => onSetTool('wire')}
-            className={`px-3 py-1.5 rounded text-xs transition-colors flex items-center gap-1.5 ${
+            className={`p-1 sm:px-3 sm:py-1.5 rounded text-xs transition-colors flex items-center gap-1.5 ${
               tool === 'wire'
                 ? 'bg-white text-[#1a1a1a] shadow-xs font-semibold'
                 : 'text-[#666] hover:text-black font-medium'
             }`}
-            title="Conectar com Fio condutor (W) - Clique em pontos intermediários para traçar a rota desejada"
+            title="Conectar com Fio condutor (W)"
           >
             <GitCommit className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Fio</span>
@@ -149,12 +151,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <button
             id="tool-node-btn"
             onClick={() => onSetTool('node')}
-            className={`px-3 py-1.5 rounded text-xs transition-colors flex items-center gap-1.5 ${
+            className={`p-1 sm:px-3 sm:py-1.5 rounded text-xs transition-colors flex items-center gap-1.5 ${
               tool === 'node'
                 ? 'bg-white text-[#1a1a1a] shadow-xs font-semibold'
                 : 'text-[#666] hover:text-black font-medium'
             }`}
-            title="Adicionar Nó / Ponto preenchido no fio ou canvas (N)"
+            title="Adicionar Nó / Ponto preenchido (N)"
           >
             <CircleDot className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Nó</span>
@@ -163,7 +165,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           <button
             id="tool-pan-btn"
             onClick={() => onSetTool('pan')}
-            className={`px-3 py-1.5 rounded text-xs transition-colors flex items-center gap-1.5 ${
+            className={`p-1 sm:px-3 sm:py-1.5 rounded text-xs transition-colors flex items-center gap-1.5 ${
               tool === 'pan'
                 ? 'bg-white text-[#1a1a1a] shadow-xs font-semibold'
                 : 'text-[#666] hover:text-black font-medium'
@@ -175,6 +177,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </button>
         </nav>
 
+        {/*
         {hasExportArea && (
           <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-300 text-amber-900 px-2.5 py-1 rounded text-xs font-medium">
             <Crop className="w-3.5 h-3.5 text-amber-700" />
@@ -189,11 +192,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             </button>
           </div>
         )}
+        TIREI ESSA PARTE Q ERA PRA CANCELAR O 'AREA ATIVA' NA TOOLBAR E MOVI PRO CANVAS*/}
 
-        <div className="h-6 w-px bg-[#e5e5e5]" />
+        <div className="hidden sm:block h-6 w-px bg-[#e5e5e5]" />
 
         {/* Desfazer / Refazer */}
-        <div className="flex border border-[#e5e5e5] rounded overflow-hidden">
+        <div className="hidden sm:flex border border-[#e5e5e5] rounded overflow-hidden">
           <button
             id="undo-btn"
             onClick={onUndo}
@@ -217,7 +221,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
 
         {/* Copiar / Colar na posição do mouse */}
-        <div className="flex border border-[#e5e5e5] rounded overflow-hidden">
+        <div className="hidden md:flex border border-[#e5e5e5] rounded overflow-hidden">
           <button
             id="copy-btn"
             onClick={onCopy}
@@ -269,9 +273,9 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       </div>
 
       {/* Lado Direito: Zoom, Grade e Exportação */}
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center space-x-1.5 sm:space-x-2">
         {/* Controle de Snap e Grade */}
-        <div className="flex items-center border border-[#e5e5e5] rounded p-1 bg-white gap-1">
+        <div className="hidden md:flex items-center border border-[#e5e5e5] rounded p-1 bg-white gap-1">
           <button
             id="snap-toggle-btn"
             onClick={onToggleSnapGrid}
@@ -299,7 +303,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
 
         {/* Controles de Zoom */}
-        <div className="flex items-center bg-white border border-[#e5e5e5] rounded p-0.5">
+        <div className="hidden md:flex items-center bg-white border border-[#e5e5e5] rounded p-0.5">
           <button
             id="zoom-out-btn"
             onClick={onZoomOut}
@@ -327,7 +331,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
 
         {/* Botão Salvar / Carregar Projeto Rápido */}
-        <div className="flex items-center space-x-1">
+        <div className="hidden lg:flex items-center space-x-1">
           <button
             id="quick-save-project-btn"
             onClick={onExportJson}
@@ -348,8 +352,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </button>
         </div>
 
-        {/* Botão e Menu de Exportação */}
-        <div className="relative flex items-center">
+        {/* Botão e Menu de Exportação (Desktop >= md) */}
+        <div className="relative hidden md:flex items-center">
           <button
             id="export-main-btn"
             onClick={() => {
@@ -468,6 +472,216 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             </div>
           </>
         )}
+        </div>
+
+        {/* Botão de Exportação Rápida no Mobile (< md) */}
+        <button
+          type="button"
+          onClick={() => {
+            if (hasExportArea) {
+              onExportPng(3, false);
+            } else {
+              onRequestDrawExportArea?.('png');
+            }
+          }}
+          className="md:hidden p-2 text-xs font-bold bg-black text-white rounded shadow-xs flex items-center justify-center transition-colors shrink-0"
+          title="Exportar imagem"
+        >
+          <Download className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Menu '...' Mais Opções no Mobile (< md) */}
+        <div className="relative md:hidden flex items-center shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowMobileMenu(!showMobileMenu)}
+            className={`p-2 rounded border transition-colors flex items-center justify-center ${
+              showMobileMenu
+                ? 'bg-black text-white border-black'
+                : 'bg-white text-[#1a1a1a] border-[#e5e5e5] hover:bg-[#f5f5f5]'
+            }`}
+            title="Mais opções e configurações"
+          >
+            <MoreHorizontal className="w-3.5 h-3.5" />
+          </button>
+
+          {showMobileMenu && (
+            <>
+              <div
+                className="fixed inset-0 z-40 bg-black/20"
+                onClick={() => setShowMobileMenu(false)}
+              />
+              <div
+                className="absolute right-0 top-full mt-1.5 w-60 bg-white rounded-lg shadow-xl border border-[#e5e5e5] py-2 z-50 text-xs text-[#1a1a1a] animate-in fade-in"
+                onClick={() => setShowMobileMenu(false)}
+              >
+                {/* Ações Rápidas */}
+                <div className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#999]">
+                  Ações
+                </div>
+                <div className="grid grid-cols-2 gap-1.5 px-3 py-1">
+                  <button
+                    type="button"
+                    disabled={!canUndo}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUndo();
+                    }}
+                    className="flex items-center justify-center gap-1.5 py-1.5 border border-[#e5e5e5] rounded bg-white hover:bg-[#f5f5f5] disabled:opacity-40"
+                  >
+                    <Undo2 className="w-3.5 h-3.5" />
+                    <span>Desfazer</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canRedo}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRedo();
+                    }}
+                    className="flex items-center justify-center gap-1.5 py-1.5 border border-[#e5e5e5] rounded bg-white hover:bg-[#f5f5f5] disabled:opacity-40"
+                  >
+                    <Redo2 className="w-3.5 h-3.5" />
+                    <span>Refazer</span>
+                  </button>
+                </div>
+
+                <div className="my-1 border-t border-[#f0f0f0]" />
+
+                {/* Visualização & Grade */}
+                <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#999]">
+                  Visualização & Grade
+                </div>
+                <div className="px-3 py-1.5 flex items-center justify-between">
+                  <span>Snap à Grade</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSnapGrid();
+                    }}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium ${
+                      snapGrid ? 'bg-black text-white' : 'bg-[#f0f0f0] text-[#666]'
+                    }`}
+                  >
+                    {snapGrid ? 'Ativo' : 'Desligado'}
+                  </button>
+                </div>
+                <div className="px-3 py-1.5 flex items-center justify-between">
+                  <span>Grade de Fundo</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleShowGrid();
+                    }}
+                    className={`px-2 py-0.5 rounded text-[11px] font-medium ${
+                      showGrid ? 'bg-black text-white' : 'bg-[#f0f0f0] text-[#666]'
+                    }`}
+                  >
+                    {showGrid ? 'Visível' : 'Oculta'}
+                  </button>
+                </div>
+                <div className="px-3 py-1.5 flex items-center justify-between border-b border-[#f0f0f0] pb-2">
+                  <span>Zoom ({Math.round(zoom * 100)}%)</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onZoomOut();
+                      }}
+                      className="p-1 border border-[#e5e5e5] rounded hover:bg-[#f5f5f5]"
+                    >
+                      <ZoomOut className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onResetZoom();
+                      }}
+                      className="px-1.5 py-0.5 text-[10px] border border-[#e5e5e5] rounded hover:bg-[#f5f5f5]"
+                    >
+                      100%
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onZoomIn();
+                      }}
+                      className="p-1 border border-[#e5e5e5] rounded hover:bg-[#f5f5f5]"
+                    >
+                      <ZoomIn className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Desenhar Área & Exportar */}
+                <div className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#999]">
+                  Desenhar Área & Exportar
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onRequestDrawExportArea?.('png')}
+                  className="w-full px-3 py-1.5 text-left hover:bg-[#eff6ff] flex items-center gap-2 text-blue-600 font-medium"
+                >
+                  <Crop className="w-3.5 h-3.5 text-[#2563eb]" />
+                  <span>Desenhar Área & Exportar PNG</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRequestDrawExportArea?.('svg')}
+                  className="w-full px-3 py-1.5 text-left hover:bg-[#eff6ff] flex items-center gap-2 text-blue-600 font-medium"
+                >
+                  <Crop className="w-3.5 h-3.5 text-[#4f46e5]" />
+                  <span>Desenhar Área & Exportar SVG</span>
+                </button>
+
+                <div className="my-1.5 border-t border-[#f0f0f0]" />
+
+                {/* Salvar & Dados */}
+                <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#999]">
+                  Salvar & Dados
+                </div>
+                <button
+                  type="button"
+                  onClick={onExportJson}
+                  className="w-full px-3 py-1.5 text-left hover:bg-[#f5f5f5] flex items-center gap-2"
+                >
+                  <Download className="w-3.5 h-3.5 text-[#666]" />
+                  <span>Salvar Diagrama (.json)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onImportJson}
+                  className="w-full px-3 py-1.5 text-left hover:bg-[#f5f5f5] flex items-center gap-2"
+                >
+                  <FolderOpen className="w-3.5 h-3.5 text-[#666]" />
+                  <span>Carregar Diagrama (.json)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onExportSingleHtml}
+                  className="w-full px-3 py-1.5 text-left hover:bg-[#f5f5f5] flex items-center gap-2"
+                >
+                  <FileCode className="w-3.5 h-3.5 text-black" />
+                  <span>Baixar App HTML Único (.html)</span>
+                </button>
+
+                <div className="my-1.5 border-t border-[#f0f0f0]" />
+                <button
+                  type="button"
+                  onClick={onClearDiagram}
+                  className="w-full px-3 py-1.5 text-left hover:bg-red-50 text-red-600 flex items-center gap-2"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Limpar Canvas</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </header>

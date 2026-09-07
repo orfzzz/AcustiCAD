@@ -18,6 +18,7 @@ import {
   ListOrdered,
   Layers,
   GripVertical,
+  X,
 } from 'lucide-react';
 
 // DRAG DE BARRINHA (CLAUDE)
@@ -41,6 +42,8 @@ interface PropertyPanelProps {
   onChangeDefaultLabelPosition: (pos: LabelPosition) => void;
   onApplyLabelPositionToAll: (pos: LabelPosition) => void;
   onHighlightComponent?: (id: string | null) => void; // NOVO
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 export const PropertyPanel: React.FC<PropertyPanelProps> = ({
@@ -62,6 +65,8 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
   onChangeDefaultLabelPosition,
   onApplyLabelPositionToAll,
   onHighlightComponent, // NOVO
+  isOpen = true,
+  onClose,
 }) => {
   const [batchCommonLabel, setBatchCommonLabel] = useState('');
   const [batchFontSize, setBatchFontSize] = useState(19);
@@ -208,7 +213,9 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
   return (
     <aside
       id="property-panel"
-      className="w-64 border-l border-[#e5e5e5] bg-white flex flex-col h-full z-10 select-none overflow-y-auto shrink-0 text-[#1a1a1a]"
+      className={`fixed inset-y-0 right-0 z-40 w-72 sm:w-80 max-w-[85vw] border-l border-[#e5e5e5] bg-white flex flex-col h-full shadow-2xl transition-transform duration-200 lg:static lg:w-64 lg:shadow-none lg:translate-x-0 ${
+        isOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
+      } select-none overflow-y-auto shrink-0 text-[#1a1a1a]`}
     >
       <div className="p-3 border-b border-[#e5e5e5] flex items-center justify-between bg-white">
         <div className="flex items-center space-x-2">
@@ -218,16 +225,28 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
           </h3>
         </div>
 
-        {(selectedComponents.length > 0 || selectedWires.length > 0) && (
-          <button
-            id="delete-selected-prop-btn"
-            onClick={onDeleteSelected}
-            title="Excluir selecionado (Delete)"
-            className="p-1 rounded text-red-600 hover:bg-red-50 transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {(selectedComponents.length > 0 || selectedWires.length > 0) && (
+            <button
+              id="delete-selected-prop-btn"
+              onClick={onDeleteSelected}
+              title="Excluir selecionado (Delete)"
+              className="p-1 rounded text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="lg:hidden p-1 rounded-md text-[#666] hover:bg-[#f5f5f5] hover:text-black transition-colors"
+              title="Fechar painel"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="p-3 space-y-3.5 text-xs">
@@ -369,7 +388,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
               </div>
 
               {/* Ajuste fino de Deslocamento X e Y (Offset em pixels) */}
-              <div className="grid grid-cols-2 gap-2 p-2 bg-[#fcfcfc] rounded border border-[#e5e5e5]">
+              <div className="grid grid-rows-2 gap-2 p-2 bg-[#fcfcfc] rounded border border-[#e5e5e5]">
                 <div>
                   <div className="flex justify-between items-center text-[10px] text-[#666] mb-1">
                     <span>Deslocamento X</span>
@@ -1042,6 +1061,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
             </div>
 
             {/* Circuit Health no estilo High Density */}
+            {/*
             <div className="pt-3 border-t border-[#e5e5e5]">
               <span className="text-[10px] font-bold text-[#999] uppercase tracking-wider block mb-2">
                 Estado do Circuito
@@ -1059,8 +1079,8 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
                   <span className="font-mono text-[#1a1a1a]">{snapGrid ? 'Snap (20px)' : 'Livre'}</span>
                 </div>
               </div>
-            </div>
-
+            </div>*/}
+          
             {/* Dica de Atalhos */}
             <div className="pt-3 border-t border-[#e5e5e5]">
               <span className="text-[10px] font-bold text-[#999] uppercase tracking-wider block mb-2">

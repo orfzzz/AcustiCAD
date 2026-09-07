@@ -82,11 +82,25 @@ export const ComponentSymbol: React.FC<ComponentSymbolProps> = ({
                 e.stopPropagation();
                 onPortMouseDown?.(p.id, e);
               }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                if (e.touches.length === 1) {
+                  const t = e.touches[0];
+                  const fakeEvent = {
+                    clientX: t.clientX,
+                    clientY: t.clientY,
+                    button: 0,
+                    stopPropagation: () => e.stopPropagation(),
+                    preventDefault: () => e.preventDefault(),
+                  } as unknown as React.MouseEvent;
+                  onPortMouseDown?.(p.id, fakeEvent);
+                }
+              }}
               onMouseEnter={() => onPortMouseEnter?.(p.id)}
               onMouseLeave={() => onPortMouseLeave?.(p.id)}
             >
-              {/* Área de clique na porta (circunscrita ao ponto da porta) */}
-              <circle cx={p.x} cy={p.y} r={7} fill="transparent" />
+              {/* Área de clique/toque generosa na porta para facilitar no mouse e mobile */}
+              <circle cx={p.x} cy={p.y} r={12} fill="transparent" />
               {/* Ponto visível */}
               <circle
                 cx={p.x}

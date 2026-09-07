@@ -8,13 +8,16 @@ import {
   Layers,
   Search,
   Plus,
+  X,
 } from 'lucide-react';
 
 interface SidebarProps {
   onAddComponent: (type: ComponentType) => void;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ onAddComponent }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ onAddComponent, isOpen = true, onClose }) => {
   const [activeTab, setActiveTab] = useState<'all' | ComponentCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -49,7 +52,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ onAddComponent }) => {
   return (
     <aside
       id="components-sidebar"
-      className="w-72 border-r border-[#e5e5e5] bg-white flex flex-col h-full z-10 select-none shrink-0"
+      className={`fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] border-r border-[#e5e5e5] bg-white flex flex-col h-full shadow-2xl transition-transform duration-200 lg:static lg:w-72 lg:shadow-none lg:translate-x-0 ${
+        isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      } select-none shrink-0`}
     >
       {/* Cabeçalho da Barra Lateral */}
       <div className="p-3 border-b border-[#e5e5e5] bg-white">
@@ -59,6 +64,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ onAddComponent }) => {
               Componentes ({filteredComponents.length})
             </span>
           </div>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="lg:hidden p-1 rounded-md text-[#666] hover:bg-[#f5f5f5] hover:text-black transition-colors"
+              title="Fechar painel"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Campo de Busca */}

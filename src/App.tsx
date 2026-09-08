@@ -629,6 +629,7 @@ export default function App() {
           onUpdateWires={handleUpdateWires}   // NOVO
           exportArea={exportArea}
           onClearExportArea={() => setExportArea(null)}   // NOVO
+          onExportAreaChange={setExportArea}   // NOVO
           isDrawingExportArea={!!drawingExportArea}
           onFinishDrawExportArea={handleFinishDrawExportArea}
           onCancelDrawExportArea={() => setDrawingExportArea(null)}

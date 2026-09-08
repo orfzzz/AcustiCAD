@@ -411,23 +411,31 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 id="export-draw-area-png-btn"
                 onClick={() => {
                   setShowExportMenu(false);
-                  onRequestDrawExportArea?.('png');
+                  if (hasExportArea) {
+                    onExportPng(3, false);
+                  } else {
+                    onRequestDrawExportArea?.('png');
+                  }
                 }}
                 className="w-full px-3 py-1.5 text-left hover:bg-[#eff6ff] flex items-center gap-2.5 text-[#1d4ed8] font-semibold transition-colors"
               >
                 <Crop className="w-4 h-4 text-[#2563eb]" />
-                <span>Desenhar Área & Exportar PNG</span>
+                <span>{hasExportArea ? 'Exportar Área Demarcada (PNG)' : 'Desenhar Área & Exportar PNG'}</span>
               </button>
               <button
                 id="export-draw-area-svg-btn"
                 onClick={() => {
                   setShowExportMenu(false);
-                  onRequestDrawExportArea?.('svg');
+                  if (hasExportArea) {
+                    onExportSvg();
+                  } else {
+                    onRequestDrawExportArea?.('svg');
+                  }
                 }}
                 className="w-full px-3 py-1.5 text-left hover:bg-[#eff6ff] flex items-center gap-2.5 text-[#1d4ed8] font-semibold transition-colors"
               >
                 <Crop className="w-4 h-4 text-[#4f46e5]" />
-                <span>Desenhar Área & Exportar SVG</span>
+                <span>{hasExportArea ? 'Exportar Área Demarcada (SVG)' : 'Desenhar Área & Exportar SVG'}</span>
               </button>
 
               <div className="my-1.5 border-t border-[#e5e5e5]" />
@@ -624,21 +632,32 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 </div>
                 <button
                   type="button"
-                  onClick={() => onRequestDrawExportArea?.('png')}
+                  onClick={() => {
+                    if (hasExportArea) {
+                      onExportPng(3, false);
+                    } else {
+                      onRequestDrawExportArea?.('png');
+                    }
+                  }}
                   className="w-full px-3 py-1.5 text-left hover:bg-[#eff6ff] flex items-center gap-2 text-blue-600 font-medium"
                 >
                   <Crop className="w-3.5 h-3.5 text-[#2563eb]" />
-                  <span>Desenhar Área & Exportar PNG</span>
+                  <span>{hasExportArea ? 'Exportar Área Demarcada (PNG)' : 'Desenhar Área & Exportar PNG'}</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => onRequestDrawExportArea?.('svg')}
+                  onClick={() => {
+                    if (hasExportArea) {
+                      onExportSvg();
+                    } else {
+                      onRequestDrawExportArea?.('svg');
+                    }
+                  }}
                   className="w-full px-3 py-1.5 text-left hover:bg-[#eff6ff] flex items-center gap-2 text-blue-600 font-medium"
                 >
                   <Crop className="w-3.5 h-3.5 text-[#4f46e5]" />
-                  <span>Desenhar Área & Exportar SVG</span>
+                  <span>{hasExportArea ? 'Exportar Área Demarcada (SVG)' : 'Desenhar Área & Exportar SVG'}</span>
                 </button>
-
                 <div className="my-1.5 border-t border-[#f0f0f0]" />
 
                 {/* Salvar & Dados */}

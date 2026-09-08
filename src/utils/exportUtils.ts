@@ -107,6 +107,14 @@ export async function exportToPng(
   // Clona o elemento SVG para manipular os atributos de viewBox sem mexer na tela
   const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
 
+  // Remove o transform de pan/zoom do grupo principal: os bounds já estão em coordenadas
+  // "puras" do diagrama (sem pan/zoom aplicado), então o grupo precisa ficar sem transform
+  // para que o viewBox alinhe corretamente com o conteúdo real
+  const transformGroup = clonedSvg.querySelector('#diagram-transform-group');
+  if (transformGroup) {
+    transformGroup.removeAttribute('transform');
+  }
+
   // Remove elementos interativos como seletores, grade, guias de corte e cursores do SVG exportado
   const interactiveLayer = clonedSvg.querySelector('#interactive-layer');
   if (interactiveLayer) interactiveLayer.remove();
@@ -230,6 +238,12 @@ export function exportToSvg(
         );
 
   const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
+
+  // Remove o transform de pan/zoom do grupo principal (ver explicação em exportToPng)
+  const transformGroup = clonedSvg.querySelector('#diagram-transform-group');
+  if (transformGroup) {
+    transformGroup.removeAttribute('transform');
+  }
 
   const interactiveLayer = clonedSvg.querySelector('#interactive-layer');
   if (interactiveLayer) interactiveLayer.remove();

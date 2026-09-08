@@ -7,7 +7,7 @@ import {
   findNearestPort,
   getWirePoints,
   pointsToSvgPath,
-  detectWireJunctions,
+  //detectWireJunctions,
   getRotatedPortPosition,
   findNearestPointOnWires,
 } from '../utils/geometry';
@@ -27,6 +27,7 @@ interface CanvasProps {
   svgRef: React.RefObject<SVGSVGElement | null>;
   exportArea?: { x: number; y: number; width: number; height: number } | null;
   onClearExportArea?: () => void; // NOVO
+  onExportAreaChange?: (bounds: { x: number; y: number; width: number; height: number }) => void; // NOVO
   isDrawingExportArea?: boolean;
   onFinishDrawExportArea?: (bounds: { x: number; y: number; width: number; height: number }) => void;
   onCancelDrawExportArea?: () => void;
@@ -59,6 +60,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   svgRef,
   exportArea,
   onClearExportArea, // NOVO
+  onExportAreaChange, // NOVO
   isDrawingExportArea,
   onFinishDrawExportArea,
   onCancelDrawExportArea,
@@ -74,6 +76,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   onSetTool,
   onCanvasMouseMove,
 }) => {
+  
+
   // Estados de arrasto de componentes
   const [isDraggingComp, setIsDraggingComp] = useState(false);
   const dragStartRef = useRef<{
@@ -90,6 +94,46 @@ export const Canvas: React.FC<CanvasProps> = ({
     currentX: number;
     currentY: number;
   } | null>(null);
+
+  // Estado de arrasto/redimensionamento da área de exportação já demarcada
+  const exportAreaDragRef = useRef<{
+    mode: 'move' | 'resize';
+    handle?: string;
+    startMouseX: number;
+    startMouseY: number;
+    startBounds: { x: number; y: number; width: number; height: number };
+  } | null>(null);
+
+  const handleExportAreaMoveStart = (e: React.MouseEvent) => {
+    if (!exportArea || e.button !== 0) return;
+    exportAreaDragRef.current = {
+      mode: 'move',
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startBounds: { ...exportArea },
+    };
+  };
+
+  const handleExportAreaResizeStart = (handle: string, e: React.MouseEvent) => {
+    if (!exportArea || e.button !== 0) return;
+    exportAreaDragRef.current = {
+      mode: 'resize',
+      handle,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startBounds: { ...exportArea },
+    };
+  };
+
+  // Garante que o arrasto/redimensionamento da área de exportação sempre termine,
+  // mesmo que o mouse seja solto fora do canvas (evita "travar" no modo resize/move)
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      exportAreaDragRef.current = null;
+    };
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, []);
 
   // Estados de arrasto do rótulo do componente
   const [isDraggingLabel, setIsDraggingLabel] = useState(false);
@@ -357,6 +401,51 @@ export const Canvas: React.FC<CanvasProps> = ({
       return;
     }
 
+    // Se estiver movendo ou redimensionando a área de exportação já demarcada
+    if (exportAreaDragRef.current && onExportAreaChange) {
+      const { mode, handle, startMouseX, startMouseY, startBounds } = exportAreaDragRef.current;
+      const dxRaw = (e.clientX - startMouseX) / zoom;
+      const dyRaw = (e.clientY - startMouseY) / zoom;
+      const dx = snapGrid ? snapToGrid(dxRaw, gridSize) : Math.round(dxRaw);
+      const dy = snapGrid ? snapToGrid(dyRaw, gridSize) : Math.round(dyRaw);
+      const minSize = 20;
+
+      let { x, y, width, height } = startBounds;
+
+      if (mode === 'move') {
+        x = startBounds.x + dx;
+        y = startBounds.y + dy;
+      } else if (mode === 'resize' && handle) {
+        if (handle.includes('w')) {
+          x = startBounds.x + dx;
+          width = startBounds.width - dx;
+        }
+        if (handle.includes('e')) {
+          width = startBounds.width + dx;
+        }
+        if (handle.includes('n')) {
+          y = startBounds.y + dy;
+          height = startBounds.height - dy;
+        }
+        if (handle.includes('s')) {
+          height = startBounds.height + dy;
+        }
+
+        // Impede que a área vire "do avesso" ou fique menor que o tamanho mínimo
+        if (width < minSize) {
+          if (handle.includes('w')) x = startBounds.x + startBounds.width - minSize;
+          width = minSize;
+        }
+        if (height < minSize) {
+          if (handle.includes('n')) y = startBounds.y + startBounds.height - minSize;
+          height = minSize;
+        }
+      }
+
+      onExportAreaChange({ x, y, width, height });
+      return;
+    }
+
     const canvasPt = screenToCanvas(e.clientX, e.clientY);
     setCursorCoords(canvasPt);
     onCanvasMouseMove?.(canvasPt);
@@ -417,17 +506,8 @@ export const Canvas: React.FC<CanvasProps> = ({
       const dxRaw = (e.clientX - dragStartRef.current.mouseX) / zoom;
       const dyRaw = (e.clientY - dragStartRef.current.mouseY) / zoom;
 
-      let dx = snapGrid ? snapToGrid(dxRaw, gridSize) : Math.round(dxRaw);
-      let dy = snapGrid ? snapToGrid(dyRaw, gridSize) : Math.round(dyRaw);
-
-      // Limita dx/dy para que nenhum componente selecionado ultrapasse a borda (x,y >= 0),
-      // garantindo que fios e componentes se movam sempre pelo MESMO deslocamento
-      for (const id of selectedIds) {
-        const initial = dragStartRef.current.initialPositions[id];
-        if (!initial) continue;
-        if (initial.x + dx < 0) dx = -initial.x;
-        if (initial.y + dy < 0) dy = -initial.y;
-      }
+      const dx = snapGrid ? snapToGrid(dxRaw, gridSize) : Math.round(dxRaw);
+      const dy = snapGrid ? snapToGrid(dyRaw, gridSize) : Math.round(dyRaw);
 
       // Move junto os waypoints dos fios cujos dois terminais fazem parte do arrasto,
       // preservando o formato do fio quando o circuito inteiro é movido
@@ -472,8 +552,8 @@ export const Canvas: React.FC<CanvasProps> = ({
           return {
             id,
             updates: {
-              x: Math.max(0, wireSnapTarget.x - 10),
-              y: Math.max(0, wireSnapTarget.y - 10),
+              x: wireSnapTarget.x - 10,
+              y: wireSnapTarget.y - 10,
             },
           };
         }
@@ -481,12 +561,11 @@ export const Canvas: React.FC<CanvasProps> = ({
         return {
           id,
           updates: {
-            x: Math.max(0, initial.x + dx),
-            y: Math.max(0, initial.y + dy),
+            x: initial.x + dx,
+            y: initial.y + dy,
           },
         };
       }).filter(Boolean) as Array<{ id: string; updates: Partial<ComponentInstance> }>;
-
       if (updates.length > 0) {
         onUpdateComponents(updates);
       }
@@ -891,7 +970,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   // Junções de fios detectadas automaticamente
-  const junctions = detectWireJunctions(wires, components);
+  // const junctions = detectWireJunctions(wires, components);
 
   // Calcula tamanho do grid visível
   const gridPatternSize = gridSize;
@@ -932,20 +1011,26 @@ export const Canvas: React.FC<CanvasProps> = ({
       {isDrawingExportArea && (
         <div
           id="export-area-banner"
-          className="absolute top-3.5 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 bg-black/95 text-white shadow-xl px-4 py-2 rounded-full text-xs select-none pointer-events-auto border border-white/20 animate-in fade-in slide-in-from-top-2"
+          className="absolute top-3.5 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 sm:gap-2.5 bg-black/95 text-white shadow-xl px-2.5 sm:px-4 py-2 rounded-full text-xs select-none pointer-events-auto border border-white/20 animate-in fade-in slide-in-from-top-2 whitespace-nowrap max-w-[92vw]"
         >
-          <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping"></span>
-          <span className="font-semibold text-white">Delimitar Área (2 Cliques):</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-ping shrink-0"></span>
+          <span className="font-semibold text-white text-[11px] sm:text-xs shrink-0">
+            <span className="hidden sm:inline">Delimitar Área (2 Cliques):</span>
+            <span className="sm:hidden">Área</span>
+          </span>
           {!exportDrawBox ? (
-            <span className="text-zinc-300">
+            <span className="hidden md:inline text-zinc-300">
               <strong className="text-white font-medium">1º Clique:</strong> Clique para marcar o primeiro canto
             </span>
           ) : (
-            <span className="text-zinc-300">
+            <span className="hidden md:inline text-zinc-300">
               <strong className="text-white font-medium">2º Clique:</strong> Clique no canto oposto para fechar ({Math.round(Math.abs(exportDrawBox.currentX - exportDrawBox.startX))} × {Math.round(Math.abs(exportDrawBox.currentY - exportDrawBox.startY))} px)
             </span>
           )}
-          <div className="w-px h-3.5 bg-white/20 mx-1"></div>
+          <span className="sm:hidden text-zinc-300 text-[11px] shrink-0">
+            {!exportDrawBox ? '1º canto' : `${Math.round(Math.abs(exportDrawBox.currentX - exportDrawBox.startX))}×${Math.round(Math.abs(exportDrawBox.currentY - exportDrawBox.startY))}`}
+          </span>
+          <div className="w-px h-3.5 bg-white/20 mx-0.5 sm:mx-1 shrink-0"></div>
           <button
             type="button"
             id="btn-cancel-draw-export"
@@ -954,10 +1039,11 @@ export const Canvas: React.FC<CanvasProps> = ({
               setExportDrawBox(null);
               onCancelDrawExportArea?.();
             }}
-            className="px-2.5 py-0.5 bg-white/20 hover:bg-white/30 text-white rounded text-[11px] font-medium transition-colors cursor-pointer"
+            className="px-2 sm:px-2.5 py-0.5 bg-white/20 hover:bg-white/30 text-white rounded text-[11px] font-medium transition-colors cursor-pointer shrink-0"
             title="Cancelar demarcação de área (Esc ou botão direito)"
           >
-            Cancelar (Esc)
+            <span className="hidden sm:inline">Cancelar (Esc)</span>
+            <span className="sm:hidden">✕</span>
           </button>
         </div>
       )}
@@ -1019,7 +1105,7 @@ export const Canvas: React.FC<CanvasProps> = ({
         </defs>
 
         {/* Grupo Principal Transformado com Pan e Zoom */}
-        <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+        <g id="diagram-transform-group" transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
           {/* Fundo do Diagrama com Grade */}
           <g id="grid-layer">
             <rect
@@ -1088,6 +1174,7 @@ export const Canvas: React.FC<CanvasProps> = ({
             })}
 
             {/* Junções pretas onde fios se encontram (nós elétricos padrão) */}
+            {/*
             {junctions.map((junc, idx) => (
               <circle
                 key={`junc-${idx}`}
@@ -1098,6 +1185,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                 className="pointer-events-none"
               />
             ))}
+            */}
 
             {/* Fio em construção (Live Rubber-Band Wire) */}
             {isDrawingWire && wireStart && wireCurrentPoint && (
@@ -1224,39 +1312,81 @@ export const Canvas: React.FC<CanvasProps> = ({
             )}
 
             {/* Área de Exportação Persistente */}
-            {exportArea && !exportDrawBox && (
-              <g id="export-area-frame">
+            {exportArea && !exportDrawBox && !isDrawingExportArea && (
+            <g id="export-area-frame">
+              <rect
+                x={exportArea.x}
+                y={exportArea.y}
+                width={exportArea.width}
+                height={exportArea.height}
+                fill="rgba(37, 99, 235, 0.04)"
+                stroke="#2563eb"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+              />
+              <g transform={`translate(${exportArea.x}, ${exportArea.y - 6})`}>
+                {/* Faixa de rótulo: arrasta para MOVER a área inteira */}
                 <rect
-                  x={exportArea.x}
-                  y={exportArea.y}
-                  width={exportArea.width}
-                  height={exportArea.height}
-                  fill="rgba(37, 99, 235, 0.04)"
-                  stroke="#2563eb"
-                  strokeWidth={2}
-                  strokeDasharray="6 4"
+                  x={0}
+                  y={-14}
+                  width={138}
+                  height={16}
+                  rx={3}
+                  fill="#2563eb"
+                  className="cursor-move pointer-events-auto"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    handleExportAreaMoveStart(e);
+                  }}
                 />
-                <g transform={`translate(${exportArea.x}, ${exportArea.y - 6})`}>
-                  <rect x={0} y={-14} width={138} height={16} rx={3} fill="#2563eb" />
-                  <text x={6} y={-3} fill="#ffffff" fontSize={10} fontFamily="sans-serif" fontWeight="bold">
-                    Área Demarcada ({Math.round(exportArea.width)}×{Math.round(exportArea.height)})
-                  </text>
-                  {/* Botão de fechar/remover a área, no canto da faixa de rótulo */}
-                  <g
-                    transform="translate(146, -14)"
-                    className="cursor-pointer pointer-events-auto"
-                    onMouseDown={(e) => {
-                      e.stopPropagation();
-                      onClearExportArea?.();
-                    }}
-                  >
-                    <rect x={0} y={0} width={16} height={16} rx={3} fill="#dc2626" />
-                    <line x1={4} y1={4} x2={12} y2={12} stroke="white" strokeWidth={1.6} strokeLinecap="round" />
-                    <line x1={12} y1={4} x2={4} y2={12} stroke="white" strokeWidth={1.6} strokeLinecap="round" />
-                  </g>
+                <text x={6} y={-3} fill="#ffffff" fontSize={10} fontFamily="sans-serif" fontWeight="bold" className="pointer-events-none">
+                  Área Demarcada ({Math.round(exportArea.width)}×{Math.round(exportArea.height)})
+                </text>
+                {/* Botão de fechar/remover a área */}
+                <g
+                  transform="translate(146, -14)"
+                  className="cursor-pointer pointer-events-auto"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    onClearExportArea?.();
+                  }}
+                >
+                  <rect x={0} y={0} width={16} height={16} rx={3} fill="#dc2626" />
+                  <line x1={4} y1={4} x2={12} y2={12} stroke="white" strokeWidth={1.6} strokeLinecap="round" />
+                  <line x1={12} y1={4} x2={4} y2={12} stroke="white" strokeWidth={1.6} strokeLinecap="round" />
                 </g>
               </g>
-            )}
+
+              {/* Alças de redimensionar: 4 cantos + 4 bordas */}
+              {[
+                { id: 'nw', x: exportArea.x, y: exportArea.y, cursor: 'nwse-resize' },
+                { id: 'n', x: exportArea.x + exportArea.width / 2, y: exportArea.y, cursor: 'ns-resize' },
+                { id: 'ne', x: exportArea.x + exportArea.width, y: exportArea.y, cursor: 'nesw-resize' },
+                { id: 'e', x: exportArea.x + exportArea.width, y: exportArea.y + exportArea.height / 2, cursor: 'ew-resize' },
+                { id: 'se', x: exportArea.x + exportArea.width, y: exportArea.y + exportArea.height, cursor: 'nwse-resize' },
+                { id: 's', x: exportArea.x + exportArea.width / 2, y: exportArea.y + exportArea.height, cursor: 'ns-resize' },
+                { id: 'sw', x: exportArea.x, y: exportArea.y + exportArea.height, cursor: 'nesw-resize' },
+                { id: 'w', x: exportArea.x, y: exportArea.y + exportArea.height / 2, cursor: 'ew-resize' },
+              ].map((h) => (
+                <rect
+                  key={h.id}
+                  x={h.x - 5}
+                  y={h.y - 5}
+                  width={10}
+                  height={10}
+                  fill="#ffffff"
+                  stroke="#2563eb"
+                  strokeWidth={1.5}
+                  className="pointer-events-auto"
+                  style={{ cursor: h.cursor }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    handleExportAreaResizeStart(h.id, e);
+                  }}
+                />
+              ))}
+            </g>
+          )}
 
             {/* Prévia ao vivo do retângulo de exportação sendo desenhado */}
             {exportDrawBox && (

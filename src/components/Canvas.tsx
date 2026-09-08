@@ -77,6 +77,16 @@ export const Canvas: React.FC<CanvasProps> = ({
   onCanvasMouseMove,
 }) => {
   
+  // Mede a largura real do texto do rótulo da área de exportação, para a faixa acompanhar o conteúdo
+  const exportAreaLabelRef = useRef<SVGTextElement | null>(null);
+  const [exportAreaLabelWidth, setExportAreaLabelWidth] = useState(150);
+
+  useEffect(() => {
+    if (exportAreaLabelRef.current) {
+      const textWidth = exportAreaLabelRef.current.getBBox().width;
+      setExportAreaLabelWidth(Math.max(90, textWidth + 16)); // 16px de respiro (8px cada lado)
+    }
+  }, [exportArea?.width, exportArea?.height]);
 
   // Estados de arrasto de componentes
   const [isDraggingComp, setIsDraggingComp] = useState(false);
@@ -1329,7 +1339,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                 <rect
                   x={0}
                   y={-14}
-                  width={138}
+                  width={exportAreaLabelWidth}
                   height={16}
                   rx={3}
                   fill="#2563eb"
@@ -1339,12 +1349,12 @@ export const Canvas: React.FC<CanvasProps> = ({
                     handleExportAreaMoveStart(e);
                   }}
                 />
-                <text x={6} y={-3} fill="#ffffff" fontSize={10} fontFamily="sans-serif" fontWeight="bold" className="pointer-events-none">
-                  Área Demarcada ({Math.round(exportArea.width)}×{Math.round(exportArea.height)})
+                <text ref={exportAreaLabelRef} x={6} y={-3} fill="#ffffff" fontSize={10} fontFamily="sans-serif" fontWeight="bold" className="pointer-events-none">
+                  ✥ Área Demarcada ({Math.round(exportArea.width)}×{Math.round(exportArea.height)})
                 </text>
                 {/* Botão de fechar/remover a área */}
                 <g
-                  transform="translate(146, -14)"
+                  transform={`translate(${exportAreaLabelWidth + 8}, -14)`}
                   className="cursor-pointer pointer-events-auto"
                   onMouseDown={(e) => {
                     e.stopPropagation();

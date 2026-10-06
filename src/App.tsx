@@ -470,14 +470,20 @@ function isPointOnWirePath(pt: WirePoint, wirePoints: WirePoint[], tol: number =
     []
   );
 
-  // Atualiza os waypoints de um ou mais fios (usado ao mover componentes conectados, para arrastar as dobras junto)
+  // Atualiza waypoints e/ou extremidades livres de um ou mais fios (usado ao arrastar seleção e componentes)
   const handleUpdateWires = useCallback(
-    (updates: Array<{ id: string; waypoints: WirePoint[] }>) => {
-      const updateMap = new Map(updates.map((u) => [u.id, u.waypoints]));
+    (updates: Array<{ id: string; fromPoint?: WirePoint; toPoint?: WirePoint; waypoints?: WirePoint[] }>) => {
+      const updateMap = new Map(updates.map((u) => [u.id, u]));
       setWires((prev) =>
         prev.map((w) => {
-          const wp = updateMap.get(w.id);
-          return wp ? { ...w, waypoints: wp } : w;
+          const u = updateMap.get(w.id);
+          if (!u) return w;
+          return {
+            ...w,
+            ...(u.fromPoint ? { fromPoint: u.fromPoint } : {}),
+            ...(u.toPoint ? { toPoint: u.toPoint } : {}),
+            ...(u.waypoints ? { waypoints: u.waypoints } : {}),
+          };
         })
       );
     },

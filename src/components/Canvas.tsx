@@ -14,6 +14,23 @@ import {
   getTransformerHandlePos,
 } from '../utils/geometry';
 
+export interface WireUpdate {
+  id: string;
+  fromPoint?: WirePoint;
+  toPoint?: WirePoint;
+  waypoints?: WirePoint[];
+}
+
+export interface InitialWireDragState {
+  id: string;
+  fromPoint: WirePoint;
+  toPoint: WirePoint;
+  waypoints: WirePoint[];
+  moveFromPoint: boolean;
+  moveToPoint: boolean;
+  moveWaypoints: boolean;
+}
+
 interface CanvasProps {
   components: ComponentInstance[];
   wires: WireConnection[];
@@ -36,7 +53,7 @@ interface CanvasProps {
   onSelect: (ids: string[], isMulti?: boolean) => void;
   onUpdateComponent: (id: string, updates: Partial<ComponentInstance>) => void;
   onUpdateComponents: (updates: Array<{ id: string; updates: Partial<ComponentInstance> }>) => void;
-  onUpdateWires?: (updates: Array<{ id: string; waypoints: WirePoint[] }>) => void; // NOVO
+  onUpdateWires?: (updates: WireUpdate[]) => void;
   onAddWire: (wire: WireConnection) => void;
   onDeleteSelected: () => void;
   onPanChange: (pan: { x: number; y: number }) => void;
@@ -90,13 +107,13 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
   }, [exportArea?.width, exportArea?.height]);
 
-  // Estados de arrasto de componentes
+  // Estados de arrasto de componentes e fios
   const [isDraggingComp, setIsDraggingComp] = useState(false);
   const dragStartRef = useRef<{
     mouseX: number;
     mouseY: number;
     initialPositions: Record<string, { x: number; y: number }>;
-    initialWireWaypoints: Record<string, WirePoint[]>;
+    initialWireStates: Record<string, InitialWireDragState>;
   } | null>(null);
 
   // Estados de desenho de área de exportação
@@ -619,15 +636,32 @@ export const Canvas: React.FC<CanvasProps> = ({
       const dx = snapGrid ? snapToGrid(dxRaw, gridSize) : Math.round(dxRaw);
       const dy = snapGrid ? snapToGrid(dyRaw, gridSize) : Math.round(dyRaw);
 
-      // Move junto os waypoints dos fios cujos dois terminais fazem parte do arrasto,
-      // preservando o formato do fio quando o circuito inteiro é movido
+      // Move junto os fios afetados pela seleção (incluindo pontas soltas/barramentos e dobras)
       if (onUpdateWires) {
-        const waypointEntries = Object.entries(dragStartRef.current.initialWireWaypoints);
-        if (waypointEntries.length > 0) {
-          const wireUpdates = waypointEntries.map(([wireId, initialWps]) => ({
-            id: wireId,
-            waypoints: (initialWps as WirePoint[]).map((wp) => ({ x: wp.x + dx, y: wp.y + dy })),
-          }));
+        const wireEntries = Object.values(dragStartRef.current.initialWireStates) as InitialWireDragState[];
+        if (wireEntries.length > 0) {
+          const wireUpdates: WireUpdate[] = wireEntries.map((ws) => {
+            const u: WireUpdate = { id: ws.id };
+            if (ws.moveFromPoint) {
+              u.fromPoint = {
+                x: ws.fromPoint.x + dx,
+                y: ws.fromPoint.y + dy,
+              };
+            }
+            if (ws.moveToPoint) {
+              u.toPoint = {
+                x: ws.toPoint.x + dx,
+                y: ws.toPoint.y + dy,
+              };
+            }
+            if (ws.moveWaypoints) {
+              u.waypoints = ws.waypoints.map((wp) => ({
+                x: wp.x + dx,
+                y: wp.y + dy,
+              }));
+            }
+            return u;
+          });
           onUpdateWires(wireUpdates);
         }
       }
@@ -653,31 +687,34 @@ export const Canvas: React.FC<CanvasProps> = ({
         }
       }
 
-      const updates = selectedIds.map((id) => {
-        const initial = dragStartRef.current?.initialPositions[id];
-        if (!initial) return null;
+      const compKeys = Object.keys(dragStartRef.current.initialPositions);
+      if (compKeys.length > 0) {
+        const updates = compKeys.map((id) => {
+          const initial = dragStartRef.current?.initialPositions[id];
+          if (!initial) return null;
 
-        if (id === singleNodeId && wireSnapTarget) {
-          // Centro do nó (x + 10, y + 10) coincide com o fio
+          if (id === singleNodeId && wireSnapTarget) {
+            // Centro do nó (x + 10, y + 10) coincide com o fio
+            return {
+              id,
+              updates: {
+                x: wireSnapTarget.x - 10,
+                y: wireSnapTarget.y - 10,
+              },
+            };
+          }
+
           return {
             id,
             updates: {
-              x: wireSnapTarget.x - 10,
-              y: wireSnapTarget.y - 10,
+              x: initial.x + dx,
+              y: initial.y + dy,
             },
           };
+        }).filter(Boolean) as Array<{ id: string; updates: Partial<ComponentInstance> }>;
+        if (updates.length > 0) {
+          onUpdateComponents(updates);
         }
-
-        return {
-          id,
-          updates: {
-            x: initial.x + dx,
-            y: initial.y + dy,
-          },
-        };
-      }).filter(Boolean) as Array<{ id: string; updates: Partial<ComponentInstance> }>;
-      if (updates.length > 0) {
-        onUpdateComponents(updates);
       }
       return;
     }
@@ -900,25 +937,129 @@ export const Canvas: React.FC<CanvasProps> = ({
     } as unknown as React.MouseEvent);
   };
   
-  // Coleta os waypoints atuais dos fios conectados aos componentes do grupo que será arrastado
-  const collectInitialWireWaypoints = (compIds: string[]): Record<string, WirePoint[]> => {
-    const idSet = new Set(compIds);
-    const map: Record<string, WirePoint[]> = {};
-    for (const wire of wires) {
-      if (!wire.waypoints || wire.waypoints.length === 0) continue;
-      const fromIn = !!(wire.fromComponentId && idSet.has(wire.fromComponentId));
-      const toIn = !!(wire.toComponentId && idSet.has(wire.toComponentId));
+  // Coleta os estados iniciais dos fios conectados aos componentes do grupo ou selecionados diretamente,
+  // permitindo que extremidades soltas, dobras e fios inteiros se movam junto com a seleção
+  const collectInitialWireDragStates = (
+    selIds: string[]
+  ): Record<string, InitialWireDragState> => {
+    const selSet = new Set(selIds);
+    const map: Record<string, InitialWireDragState> = {};
 
-      // Se ambos terminais pertencem ao grupo, ou se um pertence e o outro não tem componente conectado (liga no meio de fio)
-      if (fromIn && toIn) {
-        map[wire.id] = wire.waypoints.map((wp) => ({ ...wp }));
-      } else if (fromIn && !wire.toComponentId) {
-        map[wire.id] = wire.waypoints.map((wp) => ({ ...wp }));
-      } else if (toIn && !wire.fromComponentId) {
-        map[wire.id] = wire.waypoints.map((wp) => ({ ...wp }));
+    for (const wire of wires) {
+      const isWireSelected = selSet.has(wire.id);
+      const isFromCompSelected = wire.fromComponentId ? selSet.has(wire.fromComponentId) : false;
+      const isToCompSelected = wire.toComponentId ? selSet.has(wire.toComponentId) : false;
+
+      // Se nem o fio nem nenhum de seus componentes conectados foi selecionado, nada a mover
+      if (!isWireSelected && !isFromCompSelected && !isToCompSelected) {
+        continue;
+      }
+
+      // Regra para mover fromPoint:
+      // Se tem componente de origem conectado -> move se o componente de origem estiver selecionado
+      // Se NÃO tem componente de origem (ponta solta/ligada em outro fio) -> move se o fio estiver selecionado OU se o componente do outro lado estiver selecionado
+      let moveFrom = false;
+      if (wire.fromComponentId) {
+        moveFrom = isFromCompSelected;
+      } else {
+        moveFrom = isWireSelected || isToCompSelected;
+      }
+
+      // Regra para mover toPoint:
+      // Se tem componente de destino conectado -> move se o componente de destino estiver selecionado
+      // Se NÃO tem componente de destino (ponta solta/ligada em outro fio) -> move se o fio estiver selecionado OU se o componente de origem estiver selecionado
+      let moveTo = false;
+      if (wire.toComponentId) {
+        moveTo = isToCompSelected;
+      } else {
+        moveTo = isWireSelected || isFromCompSelected;
+      }
+
+      // Regra para mover waypoints (dobras):
+      // Move se o próprio fio estiver selecionado,
+      // ou se ambos os terminais móveis/conectados estiverem se movendo com a seleção
+      let moveWaypoints = false;
+      if (isWireSelected) {
+        moveWaypoints = true;
+      } else if (isFromCompSelected && (!wire.toComponentId || isToCompSelected)) {
+        moveWaypoints = true;
+      } else if (isToCompSelected && (!wire.fromComponentId || isFromCompSelected)) {
+        moveWaypoints = true;
+      }
+
+      if (moveFrom || moveTo || moveWaypoints) {
+        map[wire.id] = {
+          id: wire.id,
+          fromPoint: { ...wire.fromPoint },
+          toPoint: { ...wire.toPoint },
+          waypoints: (wire.waypoints || []).map((wp) => ({ ...wp })),
+          moveFromPoint: moveFrom,
+          moveToPoint: moveTo,
+          moveWaypoints,
+        };
       }
     }
+
     return map;
+  };
+
+  // Início de arrasto ao clicar em um fio condutor
+  const handleWireMouseDown = (wire: WireConnection, e: React.MouseEvent) => {
+    if (isDrawingExportArea) {
+      handleMouseDown(e);
+      return;
+    }
+
+    if (tool === 'wire' || isDrawingWire) {
+      // Deixa o evento propagar para o canvas para que handleMouseDown conecte ou inicie o fio
+      return;
+    }
+
+    if (e.button !== 0) return; // apenas botão esquerdo
+
+    e.stopPropagation();
+    onBeginDrag?.();
+
+    let newSelected = selectedIds;
+    if (!selectedIds.includes(wire.id)) {
+      if (e.shiftKey) {
+        newSelected = [...selectedIds, wire.id];
+        onSelect(newSelected);
+      } else {
+        newSelected = [wire.id];
+        onSelect([wire.id]);
+      }
+    }
+
+    setIsDraggingComp(true);
+    const initialPositions: Record<string, { x: number; y: number }> = {};
+    for (const id of newSelected) {
+      const c = components.find((item) => item.id === id);
+      if (c) {
+        initialPositions[id] = { x: c.x, y: c.y };
+      }
+    }
+
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      initialPositions,
+      initialWireStates: collectInitialWireDragStates(newSelected),
+    };
+  };
+
+  const handleWireTouchStart = (wire: WireConnection, e: React.TouchEvent) => {
+    if (isDrawingExportArea || tool === 'wire' || isDrawingWire) return;
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    handleWireMouseDown(wire, {
+      button: 0,
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      shiftKey: false,
+      preventDefault: () => e.preventDefault(),
+      stopPropagation: () => e.stopPropagation(),
+    } as unknown as React.MouseEvent);
   };
 
   // Início de arrasto ao clicar em um componente
@@ -967,7 +1108,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       mouseX: e.clientX,
       mouseY: e.clientY,
       initialPositions,
-      initialWireWaypoints: collectInitialWireWaypoints(newSelected), // NOVO
+      initialWireStates: collectInitialWireDragStates(newSelected),
     };
   };
 
@@ -1051,7 +1192,7 @@ export const Canvas: React.FC<CanvasProps> = ({
       mouseX: e.clientX,
       mouseY: e.clientY,
       initialPositions,
-      initialWireWaypoints: collectInitialWireWaypoints(newSelected), // NOVO
+      initialWireStates: collectInitialWireDragStates(newSelected),
     };
 
     // Armazena o clique no terminal: caso o usuário solte o mouse sem mover (sem arrastar),
@@ -1279,25 +1420,9 @@ export const Canvas: React.FC<CanvasProps> = ({
                 <g
                   key={wire.id}
                   id={`wire-${wire.id}`}
-                  className={tool === 'wire' || isDrawingWire ? 'cursor-crosshair' : 'cursor-pointer'}
-                  onClick={(e) => {
-                    if (isDrawingExportArea) {
-                      handleMouseDown(e);
-                      return;
-                    }
-                    if (tool === 'wire' || isDrawingWire) {
-                      // No modo fio, o clique deve ser tratado pelo canvas para iniciar ou conectar o fio
-                      return;
-                    }
-                    e.stopPropagation();
-                    onSelect([wire.id], e.shiftKey);
-                  }}
-                  onTouchStart={(e) => {
-                    if (isDrawingExportArea) return;
-                    if (tool === 'wire' || isDrawingWire) return;
-                    e.stopPropagation();
-                    onSelect([wire.id], false);
-                  }}
+                  className={tool === 'wire' || isDrawingWire ? 'cursor-crosshair' : 'cursor-move'}
+                  onMouseDown={(e) => handleWireMouseDown(wire, e)}
+                  onTouchStart={(e) => handleWireTouchStart(wire, e)}
                 >
                   {/* Área invisível mais grossa para facilitar o clique no fio */}
                   <path

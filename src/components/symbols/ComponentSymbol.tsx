@@ -57,6 +57,14 @@ export const ComponentSymbol: React.FC<ComponentSymbolProps> = ({
       case 'ground':
         portsList = [{ id: 'gnd', x: 20, y: 0 }];
         break;
+      case 'transformer':
+        portsList = [
+          { id: 'p1', x: 0, y: 0 },
+          { id: 'p2', x: 0, y: height },
+          { id: 'p3', x: width, y: 0 },
+          { id: 'p4', x: width, y: height },
+        ];
+        break;
       case 'node':
         portsList = [{ id: 'center', x: 10, y: 10 }];
         break;
@@ -511,6 +519,150 @@ export const ComponentSymbol: React.FC<ComponentSymbolProps> = ({
       case 'text_annotation':
         return null;
 
+      // 18. TRANSFORMADOR
+      case 'transformer': {
+        const cx = width / 2;
+        // Altura do bloco de espiras: ajusta dinamicamente à altura do componente
+        const coilH = Math.min(60, Math.max(36, height * 0.5));
+        const coilTop = Math.round((height - coilH) / 2);
+        const coilBottom = coilTop + coilH;
+        const turnH = coilH / 4;
+
+        // Posições dos condutores verticais das bobinas
+        const leadLeft = Math.round(cx - 10);
+        const leadRight = Math.round(cx + 10);
+        const core1 = cx - 3;
+        const core2 = cx + 3;
+
+        // Caminhos das espiras da bobina primária (esquerda - curvando para fora / esquerda)
+        const leftTurnsD = Array.from({ length: 4 })
+          .map((_, i) => {
+            const y0 = coilTop + i * turnH;
+            const y1 = y0 + turnH;
+            const cpY0 = y0 + turnH * 0.1;
+            const cpY1 = y1 - turnH * 0.1;
+            const bulgeX = leadLeft - 11;
+            return `M ${leadLeft} ${y0} C ${bulgeX} ${cpY0}, ${bulgeX} ${cpY1}, ${leadLeft} ${y1}`;
+          })
+          .join(' ');
+
+        // Caminhos das espiras da bobina secundária (direita - curvando para fora / direita)
+        const rightTurnsD = Array.from({ length: 4 })
+          .map((_, i) => {
+            const y0 = coilTop + i * turnH;
+            const y1 = y0 + turnH;
+            const cpY0 = y0 + turnH * 0.1;
+            const cpY1 = y1 - turnH * 0.1;
+            const bulgeX = leadRight + 11;
+            return `M ${leadRight} ${y0} C ${bulgeX} ${cpY0}, ${bulgeX} ${cpY1}, ${leadRight} ${y1}`;
+          })
+          .join(' ');
+
+        return (
+          <g>
+            {/* Máscara branca atrás do transformador para cobrir a grade */}
+            <rect
+              x={leadLeft - 13}
+              y={coilTop - 6}
+              width={leadRight - leadLeft + 26}
+              height={coilH + 12}
+              fill="#ffffff"
+              stroke="none"
+            />
+
+            {/* Linhas condutoras do primário (esquerda) */}
+            <path
+              d={`M 0 0 L ${leadLeft} 0 L ${leadLeft} ${coilTop}`}
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d={`M ${leadLeft} ${coilBottom} L ${leadLeft} ${height} L 0 ${height}`}
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+
+            {/* Bobina primária (4 espiras) */}
+            <path
+              d={leftTurnsD}
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+            />
+
+            {/* Ponto de polaridade primário (topo da bobina esquerda) */}
+            <circle
+              cx={leadLeft - 12}
+              cy={coilTop + 5}
+              r={2.2}
+              fill={strokeColor}
+            />
+
+            {/* Núcleo magnético / acoplamento ideal (duas linhas verticais paralelas no centro) */}
+            <line
+              x1={core1}
+              y1={coilTop - 4}
+              x2={core1}
+              y2={coilBottom + 4}
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              strokeLinecap="square"
+            />
+            <line
+              x1={core2}
+              y1={coilTop - 4}
+              x2={core2}
+              y2={coilBottom + 4}
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              strokeLinecap="square"
+            />
+
+            {/* Linhas condutoras do secundário (direita) */}
+            <path
+              d={`M ${width} 0 L ${leadRight} 0 L ${leadRight} ${coilTop}`}
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d={`M ${leadRight} ${coilBottom} L ${leadRight} ${height} L ${width} ${height}`}
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+
+            {/* Bobina secundária (4 espiras) */}
+            <path
+              d={rightTurnsD}
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+            />
+
+            {/* Ponto de polaridade secundário (topo da bobina direita) */}
+            <circle
+              cx={leadRight + 12}
+              cy={coilTop + 5}
+              r={2.2}
+              fill={strokeColor}
+            />
+          </g>
+        );
+      }
+
       default:
         return null;
     }
@@ -537,6 +689,7 @@ export const ComponentSymbol: React.FC<ComponentSymbolProps> = ({
     const pos = component.labelPosition || (
       type === 'node' ? 'top' :
       type === 'ground' ? 'bottom' :
+      type === 'transformer' ? 'top' :
       'right'
     );
     const offsetX = component.labelOffsetX || 0;

@@ -144,6 +144,21 @@ export const COMPONENT_REGISTRY: Record<ComponentType, ComponentMetadata> = {
       { id: 'p2', name: 'Terminal -', x: 20, y: 80, direction: 'bottom' },
     ],
   },
+  transformer: {
+    type: 'transformer',
+    name: 'Transformador',
+    category: 'electric',
+    defaultLabel: '1 : N',
+    defaultWidth: 60,
+    defaultHeight: 80,
+    description: 'Transformador ideal / acoplador',
+    ports: [
+      { id: 'p1', name: 'Primário Superior (+)', x: 0, y: 0, direction: 'any' },
+      { id: 'p2', name: 'Primário Inferior (-)', x: 0, y: 80, direction: 'any' },
+      { id: 'p3', name: 'Secundário Superior (+)', x: 60, y: 0, direction: 'any' },
+      { id: 'p4', name: 'Secundário Inferior (-)', x: 60, y: 80, direction: 'any' },
+    ],
+  },
 
   // --- GERAIS ---
   node: {

@@ -29,8 +29,31 @@ export function getRotatedPortPosition(
   const cx = comp.width / 2;
   const cy = comp.height / 2;
 
-  const dx = portDef.x - cx;
-  const dy = portDef.y - cy;
+  let localX = portDef.x;
+  let localY = portDef.y;
+
+  if (comp.type === 'transformer') {
+    if (portId === 'p1') {
+      localX = 0;
+      localY = 0;
+    } else if (portId === 'p2') {
+      localX = 0;
+      localY = comp.height;
+    } else if (portId === 'p3') {
+      localX = comp.width;
+      localY = 0;
+    } else if (portId === 'p4') {
+      localX = comp.width;
+      localY = comp.height;
+    }
+  } else if (comp.type === 'wire_segment') {
+    if (portId === 'end') {
+      localX = comp.width;
+    }
+  }
+
+  const dx = localX - cx;
+  const dy = localY - cy;
 
   let rdx = dx;
   let rdy = dy;
@@ -264,4 +287,175 @@ export function findNearestPointOnWires(
   }
 
   return bestPoint;
+}
+
+/**
+ * Detecta extremidades de fios ou outros componentes próximos ao transformador
+ * e calcula o ajuste automático da sua posição e altura para encaixar exatamente entre 2 extremidades.
+ */
+export function autoFitTransformer(
+  comp: ComponentInstance,
+  allComponents: ComponentInstance[],
+  wires: WireConnection[]
+): { x?: number; y?: number; height: number } | null {
+  if (comp.type !== 'transformer') return null;
+
+  const isVertical = comp.rotation === 0 || comp.rotation === 180;
+  const otherComps = allComponents.filter((c) => c.id !== comp.id);
+
+  if (isVertical) {
+    const midX = comp.x + comp.width / 2;
+    const currentTop = comp.y;
+    const currentBottom = comp.y + comp.height;
+    const centerY = (currentTop + currentBottom) / 2;
+
+    const yCandidates: number[] = [];
+
+    // 1. Fios no circuito
+    for (const wire of wires) {
+      const pts = getWirePoints(wire, allComponents);
+      for (let i = 0; i < pts.length; i++) {
+        const pt = pts[i];
+        if (Math.abs(pt.x - midX) <= Math.max(100, comp.width + 40)) {
+          yCandidates.push(pt.y);
+        }
+        if (i < pts.length - 1) {
+          const next = pts[i + 1];
+          if (Math.abs(pt.y - next.y) < 1) {
+            const minX = Math.min(pt.x, next.x) - 40;
+            const maxX = Math.max(pt.x, next.x) + 40;
+            if (midX >= minX && midX <= maxX) {
+              yCandidates.push(pt.y);
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Portas de outros componentes
+    for (const oc of otherComps) {
+      const ports = getAllComponentAbsolutePorts(oc);
+      for (const p of ports) {
+        if (Math.abs(p.x - midX) <= Math.max(100, comp.width + 40)) {
+          yCandidates.push(p.y);
+        }
+      }
+    }
+
+    const topCandidates = yCandidates
+      .filter((y) => y <= centerY - 15)
+      .sort((a, b) => Math.abs(a - currentTop) - Math.abs(b - currentTop));
+
+    const bottomCandidates = yCandidates
+      .filter((y) => y >= centerY + 15)
+      .sort((a, b) => Math.abs(a - currentBottom) - Math.abs(b - currentBottom));
+
+    if (topCandidates.length > 0 && bottomCandidates.length > 0) {
+      const bestTop = topCandidates[0];
+      const bestBottom = bottomCandidates[0];
+      if (bestBottom > bestTop) {
+        return {
+          y: bestTop,
+          height: Math.max(40, bestBottom - bestTop),
+        };
+      }
+    } else if (topCandidates.length > 0) {
+      return {
+        y: topCandidates[0],
+        height: comp.height,
+      };
+    } else if (bottomCandidates.length > 0) {
+      const bestBottom = bottomCandidates[0];
+      if (bestBottom > comp.y) {
+        return {
+          height: Math.max(40, bestBottom - comp.y),
+        };
+      }
+    }
+  } else {
+    // Rotação horizontal (90 ou 270)
+    const cx = comp.x + comp.width / 2;
+    const cy = comp.y + comp.height / 2;
+    const currentLeft = cx - comp.height / 2;
+    const currentRight = cx + comp.height / 2;
+    const centerX = cx;
+
+    const xCandidates: number[] = [];
+
+    for (const wire of wires) {
+      const pts = getWirePoints(wire, allComponents);
+      for (let i = 0; i < pts.length; i++) {
+        const pt = pts[i];
+        if (Math.abs(pt.y - cy) <= Math.max(100, comp.width + 40)) {
+          xCandidates.push(pt.x);
+        }
+        if (i < pts.length - 1) {
+          const next = pts[i + 1];
+          if (Math.abs(pt.x - next.x) < 1) {
+            const minY = Math.min(pt.y, next.y) - 40;
+            const maxY = Math.max(pt.y, next.y) + 40;
+            if (cy >= minY && cy <= maxY) {
+              xCandidates.push(pt.x);
+            }
+          }
+        }
+      }
+    }
+
+    for (const oc of otherComps) {
+      const ports = getAllComponentAbsolutePorts(oc);
+      for (const p of ports) {
+        if (Math.abs(p.y - cy) <= Math.max(100, comp.width + 40)) {
+          xCandidates.push(p.x);
+        }
+      }
+    }
+
+    const leftCandidates = xCandidates
+      .filter((x) => x <= centerX - 15)
+      .sort((a, b) => Math.abs(a - currentLeft) - Math.abs(b - currentLeft));
+
+    const rightCandidates = xCandidates
+      .filter((x) => x >= centerX + 15)
+      .sort((a, b) => Math.abs(a - currentRight) - Math.abs(b - currentRight));
+
+    if (leftCandidates.length > 0 && rightCandidates.length > 0) {
+      const bestLeft = leftCandidates[0];
+      const bestRight = rightCandidates[0];
+      if (bestRight > bestLeft) {
+        const newHeight = Math.max(40, bestRight - bestLeft);
+        const newCx = (bestLeft + bestRight) / 2;
+        const newX = newCx - comp.width / 2;
+        return {
+          x: newX,
+          height: newHeight,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Calcula a posição exata (no canvas) da alça superior ou inferior do transformador,
+ * considerando a rotação e altura atual.
+ */
+export function getTransformerHandlePos(
+  comp: ComponentInstance,
+  which: 'top' | 'bottom'
+): WirePoint {
+  const localX = comp.width / 2;
+  const localY = which === 'top' ? 0 : comp.height;
+  const cx = comp.width / 2;
+  const cy = comp.height / 2;
+  const dx = localX - cx;
+  const dy = localY - cy;
+  const rad = (comp.rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return {
+    x: Math.round(comp.x + cx + (dx * cos - dy * sin)),
+    y: Math.round(comp.y + cy + (dx * sin + dy * cos)),
+  };
 }

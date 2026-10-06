@@ -16,7 +16,7 @@ import { Toolbar } from './components/Toolbar';
 import { PropertyPanel } from './components/PropertyPanel';
 import { exportToPng, exportToSvg, exportToJson } from './utils/exportUtils';
 import { exportSingleHtmlApp } from './utils/singleHtmlExport';
-import { snapToGrid, findNearestPointOnWires } from './utils/geometry';
+import { snapToGrid, findNearestPointOnWires, autoFitTransformer } from './utils/geometry';
 import { Layers, Sliders } from 'lucide-react';
 
 const MAX_HISTORY = 30;
@@ -182,9 +182,18 @@ export default function App() {
         height: meta.defaultHeight,
         rotation: defaultOrientation,
         label: meta.defaultLabel,
-        labelPosition: defaultLabelPosition,
+        labelPosition: type === 'transformer' ? 'top' : defaultLabelPosition,
         sublabel: meta.defaultSublabel,
       };
+
+      if (type === 'transformer') {
+        const fit = autoFitTransformer(newComp, components, wires);
+        if (fit) {
+          if (fit.y !== undefined) newComp.y = fit.y;
+          if (fit.x !== undefined) newComp.x = fit.x;
+          newComp.height = fit.height;
+        }
+      }
 
       setComponents((prev) => [...prev, newComp]);
       setSelectedIds([newId]);
@@ -657,6 +666,8 @@ export default function App() {
           onClose={() => setMobileDrawer(null)}
           selectedComponents={selectedComponents}
           selectedWires={selectedWires}
+          allComponents={components}
+          allWires={wires}
           onUpdateComponent={handleUpdateComponent}
           onUpdateComponents={handleUpdateComponents}
           onHighlightComponent={setHighlightedComponentId}   // NOVO

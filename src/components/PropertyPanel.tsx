@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ComponentInstance, WireConnection, LabelPosition } from '../types';
 import { COMPONENT_REGISTRY } from '../data/componentRegistry';
+import { autoFitTransformer } from '../utils/geometry';
 import {
   RotateCw,
   Trash2,
@@ -10,6 +11,7 @@ import {
   ArrowUp,
   ArrowRight,
   ArrowLeft,
+  ArrowUpDown,
   Tag,
   Move,
   RotateCcw,
@@ -26,6 +28,8 @@ import {
 interface PropertyPanelProps {
   selectedComponents: ComponentInstance[];
   selectedWires: WireConnection[];
+  allComponents?: ComponentInstance[];
+  allWires?: WireConnection[];
   onUpdateComponent: (id: string, updates: Partial<ComponentInstance>) => void;
   onUpdateComponents?: (updates: Array<{ id: string; updates: Partial<ComponentInstance> }>) => void;
   onRotateSelected: () => void;
@@ -49,6 +53,8 @@ interface PropertyPanelProps {
 export const PropertyPanel: React.FC<PropertyPanelProps> = ({
   selectedComponents,
   selectedWires,
+  allComponents,
+  allWires,
   onUpdateComponent,
   onUpdateComponents,
   onRotateSelected,
@@ -108,7 +114,17 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
 
 
   // Símbolos rápidos para inserir no label matemático
-  const mathShortcuts = [
+  const mathShortcuts = currentComp?.type === 'transformer' ? [
+    { label: '1:N', insert: '1 : N' },
+    { label: '1:n', insert: '1 : n' },
+    { label: 'Bl:1', insert: 'Bl : 1' },
+    { label: 'S_d:1', insert: 'S_d : 1' },
+    { label: '1:φ', insert: '1 : \\phi' },
+    { label: 'N_1:N_2', insert: 'N_1 : N_2' },
+    { label: 'N', insert: 'N' },
+    { label: 'n', insert: 'n' },
+    { label: 'T', insert: 'T' },
+  ] : [
     { label: '_a', insert: '_a' },
     { label: '_{in}', insert: '_{in}' },
     { label: '_0', insert: '_0' },
@@ -362,7 +378,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
                   { pos: 'right' as LabelPosition, label: 'Dir.' },
                   { pos: 'center' as LabelPosition, label: 'Centro' },
                 ].map(({ pos, label }) => {
-                  const defaultPos = currentComp.type === 'node' ? 'top' : currentComp.type === 'ground' ? 'bottom' : 'right';
+                  const defaultPos = currentComp.type === 'transformer' ? 'top' : currentComp.type === 'node' ? 'top' : currentComp.type === 'ground' ? 'bottom' : 'right';
                   const activePos = currentComp.labelPosition || defaultPos;
                   const isActive = activePos === pos;
 
@@ -533,6 +549,92 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
                 />
               </div>
             </div>
+
+            {/* Controles Específicos do Transformador: Altura / Comprimento e Auto-ajuste */}
+            {currentComp.type === 'transformer' && (
+              <div className="p-2.5 bg-blue-50/70 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1">
+                    <Sliders className="w-3 h-3 text-blue-700" />
+                    Comprimento / Altura
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="40"
+                      max="600"
+                      step={gridSize || 20}
+                      value={currentComp.height}
+                      onChange={(e) => {
+                        const newH = Math.max(40, parseInt(e.target.value) || 80);
+                        onUpdateComponent(currentComp.id, { height: newH });
+                      }}
+                      className="w-14 text-right font-mono text-xs font-bold bg-white border border-blue-300 rounded px-1 py-0.5 text-blue-900 outline-none focus:border-blue-600"
+                    />
+                    <span className="text-[10px] font-mono text-blue-700">px</span>
+                  </div>
+                </div>
+
+                {/* Slider de altura */}
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    type="range"
+                    min="40"
+                    max="300"
+                    step={gridSize || 20}
+                    value={currentComp.height}
+                    onChange={(e) => {
+                      const newH = Math.max(40, parseInt(e.target.value) || 80);
+                      onUpdateComponent(currentComp.id, { height: newH });
+                    }}
+                    className="w-full accent-blue-600 cursor-pointer h-2 bg-blue-200/80 rounded-lg"
+                    title="Arraste para ajustar o comprimento do transformador"
+                  />
+                </div>
+
+                {/* Botões de tamanhos rápidos */}
+                <div className="grid grid-cols-4 gap-1 mb-2">
+                  {[60, 80, 100, 120, 140, 160, 200, 240].map((hVal) => (
+                    <button
+                      key={hVal}
+                      type="button"
+                      onClick={() => onUpdateComponent(currentComp.id, { height: hVal })}
+                      className={`py-1 text-[10px] font-mono rounded border transition-colors ${
+                        currentComp.height === hVal
+                          ? 'bg-blue-600 text-white border-blue-600 font-bold'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-blue-400'
+                      }`}
+                    >
+                      {hVal}px
+                    </button>
+                  ))}
+                </div>
+
+                {/* Botão de auto-ajuste às extremidades */}
+                <button
+                  type="button"
+                  id="transformer-autofit-btn"
+                  onClick={() => {
+                    const fit = autoFitTransformer(
+                      currentComp,
+                      allComponents || selectedComponents,
+                      allWires || selectedWires
+                    );
+                    if (fit) {
+                      const updates: Partial<ComponentInstance> = { height: fit.height };
+                      if (fit.y !== undefined) updates.y = fit.y;
+                      if (fit.x !== undefined) updates.x = fit.x;
+                      onUpdateComponent(currentComp.id, updates);
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded text-xs font-semibold shadow-xs transition-colors"
+                  title="Ajusta automaticamente a altura e posição do transformador para conectar exatamente a 2 extremidades de fios/terminais mais próximos"
+                >
+                  <ArrowUpDown className="w-3.5 h-3.5" />
+                  <span>Ajustar a 2 Extremidades (Auto)</span>
+                </button>
+              </div>
+            )}
 
             {/* Rotação / Orientação com Setas */}
             <div>

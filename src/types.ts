@@ -14,6 +14,7 @@ export type ComponentType =
   | 'resistor_box'           // Resistor padrão europeu (retângulo)
   | 'voltage_source'         // Fonte de tensão AC
   | 'current_source'         // Fonte de corrente AC
+  | 'transformer'            // Transformador / Acoplador ideal
   
   // Gerais
   | 'node'                   // Nó / Terminal

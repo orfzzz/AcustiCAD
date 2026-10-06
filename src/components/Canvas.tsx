@@ -10,6 +10,8 @@ import {
   //detectWireJunctions,
   getRotatedPortPosition,
   findNearestPointOnWires,
+  autoFitTransformer,
+  getTransformerHandlePos,
 } from '../utils/geometry';
 
 interface CanvasProps {
@@ -137,9 +139,52 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   // Garante que o arrasto/redimensionamento da área de exportação sempre termine,
   // mesmo que o mouse seja solto fora do canvas (evita "travar" no modo resize/move)
+  const transformerStretchRef = useRef<{
+    comp: ComponentInstance;
+    handle: 'top' | 'bottom';
+    startMouseX: number;
+    startMouseY: number;
+    startHeight: number;
+    fixedAnchorPos: WirePoint;
+  } | null>(null);
+
+  const handleTransformerStretchStart = (
+    comp: ComponentInstance,
+    handle: 'top' | 'bottom',
+    e: React.MouseEvent
+  ) => {
+    e.stopPropagation();
+    if (e.button !== 0) return;
+    onBeginDrag?.();
+    const fixedAnchorPos = getTransformerHandlePos(
+      comp,
+      handle === 'top' ? 'bottom' : 'top'
+    );
+    transformerStretchRef.current = {
+      comp,
+      handle,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startHeight: comp.height,
+      fixedAnchorPos,
+    };
+  };
+
+  const handleAutoFitTransformer = (comp: ComponentInstance) => {
+    const fit = autoFitTransformer(comp, components, wires);
+    if (fit) {
+      onBeginDrag?.();
+      const updates: Partial<ComponentInstance> = { height: fit.height };
+      if (fit.y !== undefined) updates.y = fit.y;
+      if (fit.x !== undefined) updates.x = fit.x;
+      onUpdateComponent(comp.id, updates);
+    }
+  };
+
   useEffect(() => {
     const handleGlobalMouseUp = () => {
       exportAreaDragRef.current = null;
+      transformerStretchRef.current = null;
     };
     window.addEventListener('mouseup', handleGlobalMouseUp);
     return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
@@ -511,6 +556,39 @@ export const Canvas: React.FC<CanvasProps> = ({
       return;
     }
 
+    // Se estiver esticando o transformador
+    if (transformerStretchRef.current) {
+      const { comp, handle, startMouseX, startMouseY, startHeight, fixedAnchorPos } = transformerStretchRef.current;
+      const dxRaw = (e.clientX - startMouseX) / zoom;
+      const dyRaw = (e.clientY - startMouseY) / zoom;
+      const rad = (comp.rotation * Math.PI) / 180;
+      const ux = -Math.sin(rad);
+      const uy = Math.cos(rad);
+      const deltaProj = dxRaw * ux + dyRaw * uy;
+
+      let targetDelta = handle === 'bottom' ? deltaProj : -deltaProj;
+      if (snapGrid) {
+        targetDelta = snapToGrid(targetDelta, gridSize);
+      }
+
+      const newHeight = Math.max(40, Math.min(800, Math.round(startHeight + targetDelta)));
+
+      // Encontra nova posição (x, y) de forma que a extremidade oposta permaneça fixa no canvas
+      const dummyComp = { ...comp, height: newHeight, x: 0, y: 0 };
+      const oppositeWhich = handle === 'top' ? 'bottom' : 'top';
+      const oppositeLocal = getTransformerHandlePos(dummyComp, oppositeWhich);
+
+      const newX = Math.round(fixedAnchorPos.x - oppositeLocal.x);
+      const newY = Math.round(fixedAnchorPos.y - oppositeLocal.y);
+
+      onUpdateComponent(comp.id, {
+        x: newX,
+        y: newY,
+        height: newHeight,
+      });
+      return;
+    }
+
     // Se estiver arrastando componentes selecionados
     if (isDraggingComp && dragStartRef.current) {
       const dxRaw = (e.clientX - dragStartRef.current.mouseX) / zoom;
@@ -526,7 +604,7 @@ export const Canvas: React.FC<CanvasProps> = ({
         if (waypointEntries.length > 0) {
           const wireUpdates = waypointEntries.map(([wireId, initialWps]) => ({
             id: wireId,
-            waypoints: initialWps.map((wp) => ({ x: wp.x + dx, y: wp.y + dy })),
+            waypoints: (initialWps as WirePoint[]).map((wp) => ({ x: wp.x + dx, y: wp.y + dy })),
           }));
           onUpdateWires(wireUpdates);
         }
@@ -628,6 +706,8 @@ export const Canvas: React.FC<CanvasProps> = ({
       setIsDraggingLabel(false);
       labelDragRef.current = null;
     }
+
+    transformerStretchRef.current = null;
 
     // Conclui seleção por caixa se houver
     if (selectionBox) {
@@ -1397,6 +1477,99 @@ export const Canvas: React.FC<CanvasProps> = ({
               ))}
             </g>
           )}
+
+            {/* Alças de esticar e auto-ajuste do Transformador Selecionado */}
+            {selectedIds.length === 1 && (() => {
+              const selComp = components.find((c) => c.id === selectedIds[0]);
+              if (!selComp || selComp.type !== 'transformer') return null;
+
+              const topHandlePos = getTransformerHandlePos(selComp, 'top');
+              const bottomHandlePos = getTransformerHandlePos(selComp, 'bottom');
+              const isVert = selComp.rotation === 0 || selComp.rotation === 180;
+              const cursor = isVert ? 'ns-resize' : 'ew-resize';
+
+              return (
+                <g id="transformer-interactive-controls" className="pointer-events-auto select-none">
+                  {/* Linha guia sutil conectando as alças */}
+                  <line
+                    x1={topHandlePos.x}
+                    y1={topHandlePos.y}
+                    x2={bottomHandlePos.x}
+                    y2={bottomHandlePos.y}
+                    stroke="#3b82f6"
+                    strokeWidth={1}
+                    strokeDasharray="3 3"
+                    className="pointer-events-none opacity-40"
+                  />
+
+                  {/* Alça Superior / Início */}
+                  <g
+                    transform={`translate(${topHandlePos.x}, ${topHandlePos.y})`}
+                    style={{ cursor }}
+                    onMouseDown={(e) => handleTransformerStretchStart(selComp, 'top', e)}
+                    className="cursor-pointer"
+                  >
+                    <circle r={12} fill="transparent" />
+                    <circle r={6.5} fill="#2563eb" stroke="#ffffff" strokeWidth={1.5} className="hover:scale-125 transition-transform" />
+                    {isVert ? (
+                      <path d="M -2.5 1 L 0 -2.5 L 2.5 1" stroke="#ffffff" strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    ) : (
+                      <path d="M 1 -2.5 L -2.5 0 L 1 2.5" stroke="#ffffff" strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    )}
+                  </g>
+
+                  {/* Alça Inferior / Fim */}
+                  <g
+                    transform={`translate(${bottomHandlePos.x}, ${bottomHandlePos.y})`}
+                    style={{ cursor }}
+                    onMouseDown={(e) => handleTransformerStretchStart(selComp, 'bottom', e)}
+                    className="cursor-pointer"
+                  >
+                    <circle r={12} fill="transparent" />
+                    <circle r={6.5} fill="#2563eb" stroke="#ffffff" strokeWidth={1.5} className="hover:scale-125 transition-transform" />
+                    {isVert ? (
+                      <path d="M -2.5 -1 L 0 2.5 L 2.5 -1" stroke="#ffffff" strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    ) : (
+                      <path d="M -1 -2.5 L 2.5 0 L -1 2.5" stroke="#ffffff" strokeWidth={1.2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                    )}
+                  </g>
+
+                  {/* Botão de auto-ajuste às 2 extremidades */}
+                  <g
+                    transform={`translate(${bottomHandlePos.x}, ${bottomHandlePos.y + (isVert ? 16 : 22)})`}
+                    className="cursor-pointer transition-transform hover:scale-105"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAutoFitTransformer(selComp);
+                    }}
+                  >
+                    <rect
+                      x={-55}
+                      y={-10}
+                      width={110}
+                      height={20}
+                      rx={10}
+                      fill="#1e293b"
+                      stroke="#3b82f6"
+                      strokeWidth={1}
+                      className="shadow-md"
+                    />
+                    <text
+                      x={0}
+                      y={3.5}
+                      fill="#ffffff"
+                      fontSize={10}
+                      fontFamily="sans-serif"
+                      fontWeight="bold"
+                      textAnchor="middle"
+                      className="pointer-events-none"
+                    >
+                      ⇕ Ajustar a 2 Fios
+                    </text>
+                  </g>
+                </g>
+              );
+            })()}
 
             {/* Prévia ao vivo do retângulo de exportação sendo desenhado */}
             {exportDrawBox && (

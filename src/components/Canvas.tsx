@@ -399,21 +399,38 @@ export const Canvas: React.FC<CanvasProps> = ({
             toComponentId: nearPort.componentId,
             toPortId: nearPort.portId,
             toPoint: nearPort.point,
-            waypoints: wireWaypoints, // MUDOU
+            waypoints: wireWaypoints,
           });
         }
         cancelWireDrawing();
-      } else {
-        // Clicou no espaço vazio: adiciona uma dobra (waypoint) no fio em vez de cancelar
-        setWireWaypoints((prev) => [...prev, canvasPt]); // MUDOU
+        return;
       }
+
+      // Conexão direta ao clicar no meio de um fio existente (junção em T):
+      const nearWirePt = findNearestPointOnWires(wires, components, canvasPt, 14, gridSize);
+      if (nearWirePt && Math.hypot(nearWirePt.x - wireStart.point.x, nearWirePt.y - wireStart.point.y) > 10) {
+        onAddWire({
+          id: `wire_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          fromComponentId: wireStart.componentId,
+          fromPortId: wireStart.portId,
+          fromPoint: wireStart.point,
+          toPoint: nearWirePt,
+          waypoints: wireWaypoints,
+        });
+        cancelWireDrawing();
+        return;
+      }
+
+      // Clicou no espaço vazio: adiciona uma dobra (waypoint) no fio em vez de cancelar
+      setWireWaypoints((prev) => [...prev, canvasPt]);
       return;
     }
 
     // Se estiver explicitamente na ferramenta de Fio e clicou para iniciar:
     if (tool === 'wire') {
       const nearPort = findNearestPort(components, canvasPt, 18);
-      const startPt = nearPort ? nearPort.point : canvasPt;
+      const nearWirePt = findNearestPointOnWires(wires, components, canvasPt, 18, gridSize);
+      const startPt = nearPort ? nearPort.point : nearWirePt || canvasPt;
       setIsDrawingWire(true);
       setWireStart({
         point: startPt,
@@ -723,7 +740,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
       // Apenas seleciona se a caixa tiver tamanho significativo
       if (Math.abs(x2 - x1) > 5 || Math.abs(y2 - y1) > 5) {
-        const insideIds = components
+        const insideCompIds = components
           .filter(
             (c) =>
               c.x >= x1 &&
@@ -732,6 +749,24 @@ export const Canvas: React.FC<CanvasProps> = ({
               c.y + c.height <= y2
           )
           .map((c) => c.id);
+
+        // Também seleciona fios que estejam dentro da caixa delimitadora
+        const insideWireIds = wires
+          .filter((wire) => {
+            const pts = getWirePoints(wire, components);
+            if (pts.length === 0) return false;
+            const ptsInBox = pts.filter((p) => p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2);
+            return (
+              ptsInBox.length === pts.length ||
+              (ptsInBox.length >= 2 &&
+                pts[0].x >= x1 && pts[0].x <= x2 && pts[0].y >= y1 && pts[0].y <= y2 &&
+                pts[pts.length - 1].x >= x1 && pts[pts.length - 1].x <= x2 &&
+                pts[pts.length - 1].y >= y1 && pts[pts.length - 1].y <= y2)
+            );
+          })
+          .map((w) => w.id);
+
+        const insideIds = [...insideCompIds, ...insideWireIds];
 
         if (insideIds.length > 0) {
           onSelect(insideIds, e.shiftKey);
@@ -747,13 +782,15 @@ export const Canvas: React.FC<CanvasProps> = ({
     e.preventDefault();
     e.stopPropagation();
     const canvasPt = screenToCanvas(e.clientX, e.clientY);
+    const nearWirePt = findNearestPointOnWires(wires, components, canvasPt, 16, gridSize);
+    const finalPt = nearWirePt || canvasPt;
 
     onAddWire({
       id: `wire_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       fromComponentId: wireStart.componentId,
       fromPortId: wireStart.portId,
       fromPoint: wireStart.point,
-      toPoint: canvasPt,
+      toPoint: finalPt,
       waypoints: wireWaypoints,
     });
     cancelWireDrawing();
@@ -863,17 +900,21 @@ export const Canvas: React.FC<CanvasProps> = ({
     } as unknown as React.MouseEvent);
   };
   
-  // Coleta os waypoints atuais dos fios cujos dois terminais pertencem ao grupo que será arrastado
+  // Coleta os waypoints atuais dos fios conectados aos componentes do grupo que será arrastado
   const collectInitialWireWaypoints = (compIds: string[]): Record<string, WirePoint[]> => {
     const idSet = new Set(compIds);
     const map: Record<string, WirePoint[]> = {};
     for (const wire of wires) {
-      if (
-        wire.waypoints &&
-        wire.waypoints.length > 0 &&
-        wire.fromComponentId && idSet.has(wire.fromComponentId) &&
-        wire.toComponentId && idSet.has(wire.toComponentId)
-      ) {
+      if (!wire.waypoints || wire.waypoints.length === 0) continue;
+      const fromIn = !!(wire.fromComponentId && idSet.has(wire.fromComponentId));
+      const toIn = !!(wire.toComponentId && idSet.has(wire.toComponentId));
+
+      // Se ambos terminais pertencem ao grupo, ou se um pertence e o outro não tem componente conectado (liga no meio de fio)
+      if (fromIn && toIn) {
+        map[wire.id] = wire.waypoints.map((wp) => ({ ...wp }));
+      } else if (fromIn && !wire.toComponentId) {
+        map[wire.id] = wire.waypoints.map((wp) => ({ ...wp }));
+      } else if (toIn && !wire.fromComponentId) {
         map[wire.id] = wire.waypoints.map((wp) => ({ ...wp }));
       }
     }
@@ -1143,19 +1184,20 @@ export const Canvas: React.FC<CanvasProps> = ({
         </div>
       )}
 
-      {/* High Density Floating Banner para Cancelar Modo Fio */}
-      {isDrawingWire && (
+      {/* High Density Floating Banner para Modo Fio */}
+      {tool === 'wire' && (
         <div
           id="wire-active-banner"
-          className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 sm:gap-2 bg-white/95 backdrop-blur-xs border border-[#e5e5e5] shadow-md px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs text-[#1a1a1a] select-none pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-150 whitespace-nowrap max-w-[92vw]"
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 sm:gap-2 bg-white/95 backdrop-blur-xs border border-blue-200 shadow-md px-2.5 sm:px-3.5 py-1.5 rounded-full text-xs text-[#1a1a1a] select-none pointer-events-auto animate-in fade-in slide-in-from-top-2 duration-150 whitespace-nowrap max-w-[92vw]"
         >
           <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse shrink-0"></span>
           <span className="font-semibold text-[11px] sm:text-xs text-[#111] shrink-0">
-            <span className="hidden sm:inline">Modo Fio ativo</span>
-            <span className="sm:hidden">Fio</span>
+            {isDrawingWire ? 'Desenhando Fio' : 'Modo Fio Contínuo'}
           </span>
           <span className="hidden md:inline text-[#666] text-[11px]">
-            Clique para dobrar · Clique em terminal para ligar · Duplo-clique para soltar
+            {isDrawingWire
+              ? 'Clique para dobrar · Clique em terminal/fio para ligar · Duplo-clique para soltar'
+              : 'Clique em terminal ou fio para conectar · Mude a ferramenta na barra superior para sair'}
           </span>
           <div className="w-px h-3.5 bg-[#e5e5e5] mx-0.5 sm:mx-1 shrink-0"></div>
           <button
@@ -1163,13 +1205,17 @@ export const Canvas: React.FC<CanvasProps> = ({
             id="btn-cancel-wire"
             onClick={(e) => {
               e.stopPropagation();
-              cancelWireDrawing();
+              if (isDrawingWire) {
+                cancelWireDrawing();
+              } else {
+                onSetTool?.('select');
+              }
             }}
             className="px-2 sm:px-2.5 py-0.5 bg-[#f5f5f5] hover:bg-[#e5e5e5] active:bg-[#d4d4d4] text-[#333] border border-[#d4d4d4] rounded text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer shrink-0"
-            title="Cancelar conexão de fio (Esc ou botão direito)"
+            title={isDrawingWire ? 'Cancelar conexão deste fio (Esc)' : 'Sair da ferramenta de fio (Esc / V)'}
           >
             <span>✕</span>
-            <span className="hidden sm:inline">Cancelar (Esc)</span>
+            <span className="hidden sm:inline">{isDrawingWire ? 'Cancelar Fio (Esc)' : 'Sair (Esc)'}</span>
           </button>
         </div>
       )}
@@ -1233,10 +1279,14 @@ export const Canvas: React.FC<CanvasProps> = ({
                 <g
                   key={wire.id}
                   id={`wire-${wire.id}`}
-                  className="cursor-pointer"
+                  className={tool === 'wire' || isDrawingWire ? 'cursor-crosshair' : 'cursor-pointer'}
                   onClick={(e) => {
                     if (isDrawingExportArea) {
                       handleMouseDown(e);
+                      return;
+                    }
+                    if (tool === 'wire' || isDrawingWire) {
+                      // No modo fio, o clique deve ser tratado pelo canvas para iniciar ou conectar o fio
                       return;
                     }
                     e.stopPropagation();
@@ -1244,6 +1294,7 @@ export const Canvas: React.FC<CanvasProps> = ({
                   }}
                   onTouchStart={(e) => {
                     if (isDrawingExportArea) return;
+                    if (tool === 'wire' || isDrawingWire) return;
                     e.stopPropagation();
                     onSelect([wire.id], false);
                   }}

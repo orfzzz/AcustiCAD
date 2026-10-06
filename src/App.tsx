@@ -16,7 +16,7 @@ import { Toolbar } from './components/Toolbar';
 import { PropertyPanel } from './components/PropertyPanel';
 import { exportToPng, exportToSvg, exportToJson } from './utils/exportUtils';
 import { exportSingleHtmlApp } from './utils/singleHtmlExport';
-import { snapToGrid, findNearestPointOnWires, autoFitTransformer } from './utils/geometry';
+import { snapToGrid, findNearestPointOnWires, autoFitTransformer, getWirePoints } from './utils/geometry';
 import { Layers, Sliders } from 'lucide-react';
 
 const MAX_HISTORY = 30;
@@ -204,20 +204,100 @@ export default function App() {
     [pushHistory, snapGrid, gridSize, pan, wires, components, defaultOrientation, defaultLabelPosition]
   );
 
-  // Copiar elementos selecionados
+// Helper para determinar se um ponto está sobre ou muito próximo a um segmento de fio
+function isPointOnWirePath(pt: WirePoint, wirePoints: WirePoint[], tol: number = 10): boolean {
+  for (let i = 0; i < wirePoints.length - 1; i++) {
+    const p1 = wirePoints[i];
+    const p2 = wirePoints[i + 1];
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq < 0.001) {
+      if (Math.hypot(pt.x - p1.x, pt.y - p1.y) <= tol) return true;
+      continue;
+    }
+    let t = ((pt.x - p1.x) * dx + (pt.y - p1.y) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    const projX = p1.x + t * dx;
+    const projY = p1.y + t * dy;
+    if (Math.hypot(pt.x - projX, pt.y - projY) <= tol) return true;
+  }
+  return false;
+}
+
+  // Copiar elementos selecionados (incluindo fios que conectam no meio de outros fios ou nós livres)
   const handleCopy = useCallback(() => {
     if (selectedIds.length === 0) return;
 
     const selectedComps = components.filter((c) => selectedIds.includes(c.id));
     const selectedCompIdSet = new Set(selectedComps.map((c) => c.id));
-    const selectedWireList = wires.filter(
-      (w) =>
-        selectedIds.includes(w.id) ||
-        (w.fromComponentId &&
-          selectedCompIdSet.has(w.fromComponentId) &&
-          w.toComponentId &&
-          selectedCompIdSet.has(w.toComponentId))
+    const selectedWireIdSet = new Set(
+      wires.filter((w) => selectedIds.includes(w.id)).map((w) => w.id)
     );
+
+    const copiedWireIds = new Set<string>();
+
+    // 1. Fios explicitamente selecionados
+    for (const w of wires) {
+      if (selectedWireIdSet.has(w.id)) {
+        copiedWireIds.add(w.id);
+      }
+    }
+
+    // 2. Fios conectados a componentes selecionados:
+    // (a) Entre dois componentes selecionados
+    // (b) Sai de um componente selecionado e conecta no meio de outro fio (sem toComponentId)
+    // (c) Conecta em um componente selecionado vindo do meio de outro fio (sem fromComponentId)
+    for (const w of wires) {
+      const fromInSel = !!(w.fromComponentId && selectedCompIdSet.has(w.fromComponentId));
+      const toInSel = !!(w.toComponentId && selectedCompIdSet.has(w.toComponentId));
+
+      if (fromInSel && toInSel) {
+        copiedWireIds.add(w.id);
+      } else if (fromInSel && !w.toComponentId) {
+        copiedWireIds.add(w.id);
+      } else if (toInSel && !w.fromComponentId) {
+        copiedWireIds.add(w.id);
+      }
+    }
+
+    // 3. Propagação: se um fio copiado se conecta no meio de outro fio (ex: barramento ou trilha),
+    // inclui o outro fio também caso não pertença a um componente externo não selecionado
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const currentCopiedWires = wires.filter((w) => copiedWireIds.has(w.id));
+      for (const w of wires) {
+        if (copiedWireIds.has(w.id)) continue;
+
+        // Se este fio estiver conectado a um componente externo não selecionado, não inclui
+        const connectsToExternalComp =
+          (w.fromComponentId && !selectedCompIdSet.has(w.fromComponentId)) ||
+          (w.toComponentId && !selectedCompIdSet.has(w.toComponentId));
+        if (connectsToExternalComp) continue;
+
+        const wPts = getWirePoints(w, components);
+        if (wPts.length === 0) continue;
+        const wStart = wPts[0];
+        const wEnd = wPts[wPts.length - 1];
+
+        const touchesCopied = currentCopiedWires.some((cw) => {
+          const cwPts = getWirePoints(cw, components);
+          return (
+            isPointOnWirePath(wStart, cwPts, 12) ||
+            isPointOnWirePath(wEnd, cwPts, 12) ||
+            cwPts.some((cp) => isPointOnWirePath(cp, wPts, 12))
+          );
+        });
+
+        if (touchesCopied) {
+          copiedWireIds.add(w.id);
+          changed = true;
+        }
+      }
+    }
+
+    const selectedWireList = wires.filter((w) => copiedWireIds.has(w.id));
 
     if (selectedComps.length === 0 && selectedWireList.length === 0) return;
 
@@ -313,11 +393,21 @@ export default function App() {
       const newId = `wire_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
       newWireIds.push(newId);
 
+      // Mapeia para a nova instância apenas se o componente de origem/destino tiver sido copiado junto
+      const mappedFromCompId = wire.fromComponentId && idMap.has(wire.fromComponentId)
+        ? idMap.get(wire.fromComponentId)
+        : undefined;
+      const mappedToCompId = wire.toComponentId && idMap.has(wire.toComponentId)
+        ? idMap.get(wire.toComponentId)
+        : undefined;
+
       return {
         ...wire,
         id: newId,
-        fromComponentId: wire.fromComponentId ? idMap.get(wire.fromComponentId) || wire.fromComponentId : undefined,
-        toComponentId: wire.toComponentId ? idMap.get(wire.toComponentId) || wire.toComponentId : undefined,
+        fromComponentId: mappedFromCompId,
+        fromPortId: mappedFromCompId ? wire.fromPortId : undefined,
+        toComponentId: mappedToCompId,
+        toPortId: mappedToCompId ? wire.toPortId : undefined,
         fromPoint: {
           x: wire.fromPoint.x + dx,
           y: wire.fromPoint.y + dy,
@@ -492,13 +582,13 @@ export default function App() {
         if (tool === 'wire') setTool('select');
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
         e.preventDefault();
-        setSelectedIds(components.map((c) => c.id));
+        setSelectedIds([...components.map((c) => c.id), ...wires.map((w) => w.id)]);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo, handleDeleteSelected, handleRotateSelected, handleCopy, handlePaste, tool, components]);
+  }, [handleUndo, handleRedo, handleDeleteSelected, handleRotateSelected, handleCopy, handlePaste, tool, components, wires]);
 
   // Exportações com suporte a área selecionada
   const handleExportPng = (scale: number = 3, transparent: boolean = false) => {

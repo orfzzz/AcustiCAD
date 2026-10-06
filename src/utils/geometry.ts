@@ -290,6 +290,45 @@ export function findNearestPointOnWires(
 }
 
 /**
+ * Verifica se um ponto (x, y) está conectado / tocando qualquer um dos fios fornecidos.
+ * Usado para detectar derivações (T-junctions) e fios conectados no meio de outros fios.
+ */
+export function isPointTouchingWires(
+  pt: WirePoint,
+  targetWires: WireConnection[],
+  components: ComponentInstance[],
+  threshold: number = 8
+): boolean {
+  for (const wire of targetWires) {
+    const points = getWirePoints(wire, components);
+    for (let i = 0; i < points.length - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const lenSq = dx * dx + dy * dy;
+
+      let projX = p1.x;
+      let projY = p1.y;
+
+      if (lenSq > 0.0001) {
+        let t = ((pt.x - p1.x) * dx + (pt.y - p1.y) * dy) / lenSq;
+        t = Math.max(0, Math.min(1, t));
+        projX = p1.x + t * dx;
+        projY = p1.y + t * dy;
+      }
+
+      const dist = Math.hypot(pt.x - projX, pt.y - projY);
+      if (dist <= threshold) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Detecta extremidades de fios ou outros componentes próximos ao transformador
  * e calcula o ajuste automático da sua posição e altura para encaixar exatamente entre 2 extremidades.
  */

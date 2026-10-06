@@ -219,17 +219,15 @@ export const Canvas: React.FC<CanvasProps> = ({
     clientY: number;
   } | null>(null);
 
-  // Função para cancelar o desenho de fio e voltar com segurança para o modo ponteiro
+  // Função para limpar o estado de um fio em desenho (ao concluir a inserção ou ao cancelar o segmento atual)
+  // Mantém a ferramenta 'wire' ativa para continuar inserindo fios até o usuário trocar de ferramenta na topbar
   const cancelWireDrawing = useCallback(() => {
     setIsDrawingWire(false);
     setWireStart(null);
     setWireCurrentPoint(null);
-    setWireWaypoints([]); // NOVO
+    setWireWaypoints([]);
     portDownRef.current = null;
-    if (tool === 'wire') {
-      onSetTool?.('select');
-    }
-  }, [tool, onSetTool]);
+  }, []);
 
   // Se a ferramenta mudar no toolbar (ex: clicou em 'select' ou 'pan'), cancela qualquer fio ativo
   useEffect(() => {
@@ -253,16 +251,23 @@ export const Canvas: React.FC<CanvasProps> = ({
           onCancelDrawExportArea?.();
           return;
         }
-        if (isDrawingWire || tool === 'wire') {
+        if (isDrawingWire) {
           e.preventDefault();
           e.stopPropagation();
           cancelWireDrawing();
+          return;
+        }
+        if (tool === 'wire') {
+          e.preventDefault();
+          e.stopPropagation();
+          onSetTool?.('select');
+          return;
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [isDrawingExportArea, onCancelDrawExportArea, isDrawingWire, tool, cancelWireDrawing]);
+  }, [isDrawingExportArea, onCancelDrawExportArea, isDrawingWire, tool, cancelWireDrawing, onSetTool]);
 
   // Estados de panning
   const [isPanning, setIsPanning] = useState(false);

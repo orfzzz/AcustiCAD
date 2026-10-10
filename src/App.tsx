@@ -182,7 +182,7 @@ export default function App() {
         height: meta.defaultHeight,
         rotation: defaultOrientation,
         label: meta.defaultLabel,
-        labelPosition: type === 'transformer' ? 'top' : defaultLabelPosition,
+        labelPosition: type === 'transformer' ? 'top' : type === 'mesh_current' ? 'center' : defaultLabelPosition,
         sublabel: meta.defaultSublabel,
       };
 

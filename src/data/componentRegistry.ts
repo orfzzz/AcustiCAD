@@ -214,6 +214,17 @@ export const COMPONENT_REGISTRY: Record<ComponentType, ComponentMetadata> = {
   },
 
   // --- SETAS E ANOTAÇÕES ---
+  mesh_current: {
+    type: 'mesh_current',
+    name: 'Corrente de Malha',
+    category: 'electric',
+    defaultLabel: 'I_1',
+    unit: 'A',
+    defaultWidth: 50,
+    defaultHeight: 50,
+    description: 'Seta de circulação de corrente na malha (sentido horário ou anti-horário)',
+    ports: [],
+  },
   flow_arrow: {
     type: 'flow_arrow',
     name: 'Seta Indicadora',

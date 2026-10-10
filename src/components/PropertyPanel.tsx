@@ -124,6 +124,17 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
     { label: 'N', insert: 'N' },
     { label: 'n', insert: 'n' },
     { label: 'T', insert: 'T' },
+  ] : currentComp?.type === 'mesh_current' ? [
+    { label: 'I_1', insert: 'I_1' },
+    { label: 'I_2', insert: 'I_2' },
+    { label: 'I_3', insert: 'I_3' },
+    { label: 'I_a', insert: 'I_a' },
+    { label: 'I_b', insert: 'I_b' },
+    { label: 'i_1', insert: 'i_1' },
+    { label: 'i_2', insert: 'i_2' },
+    { label: 'I_{m1}', insert: 'I_{m1}' },
+    { label: 'I_{m2}', insert: 'I_{m2}' },
+    { label: 'J_1', insert: 'J_1' },
   ] : [
     { label: '_a', insert: '_a' },
     { label: '_{in}', insert: '_{in}' },
@@ -378,7 +389,7 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
                   { pos: 'right' as LabelPosition, label: 'Dir.' },
                   { pos: 'center' as LabelPosition, label: 'Centro' },
                 ].map(({ pos, label }) => {
-                  const defaultPos = currentComp.type === 'transformer' ? 'top' : currentComp.type === 'node' ? 'top' : currentComp.type === 'ground' ? 'bottom' : 'right';
+                  const defaultPos = currentComp.type === 'transformer' ? 'top' : currentComp.type === 'node' ? 'top' : currentComp.type === 'ground' ? 'bottom' : currentComp.type === 'mesh_current' ? 'center' : 'right';
                   const activePos = currentComp.labelPosition || defaultPos;
                   const isActive = activePos === pos;
 
@@ -633,6 +644,73 @@ export const PropertyPanel: React.FC<PropertyPanelProps> = ({
                   <ArrowUpDown className="w-3.5 h-3.5" />
                   <span>Ajustar a 2 Extremidades (Auto)</span>
                 </button>
+              </div>
+            )}
+
+            {/* Controles Específicos da Corrente na Malha */}
+            {currentComp.type === 'mesh_current' && (
+              <div className="p-2.5 bg-amber-50/70 rounded-lg border border-amber-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1">
+                    <RotateCw className="w-3 h-3 text-amber-700" />
+                    Sentido da Corrente
+                  </span>
+                </div>
+
+                {/* Sentido: Horário (CW) / Anti-horário (CCW) */}
+                <div className="grid grid-cols-2 gap-1.5 mb-2.5">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateComponent(currentComp.id, { meshDirection: 'cw' })}
+                    className={`flex items-center justify-center gap-1.5 py-1.5 text-xs rounded border transition-all ${
+                      (!currentComp.meshDirection || currentComp.meshDirection === 'cw')
+                        ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-xs'
+                        : 'bg-white text-stone-700 border-stone-200 hover:border-amber-400'
+                    }`}
+                  >
+                    <RotateCw className="w-3.5 h-3.5" />
+                    <span>Horário (↻)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateComponent(currentComp.id, { meshDirection: 'ccw' })}
+                    className={`flex items-center justify-center gap-1.5 py-1.5 text-xs rounded border transition-all ${
+                      currentComp.meshDirection === 'ccw'
+                        ? 'bg-amber-600 text-white border-amber-600 font-bold shadow-xs'
+                        : 'bg-white text-stone-700 border-stone-200 hover:border-amber-400'
+                    }`}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Anti-horário (↺)</span>
+                  </button>
+                </div>
+
+                {/* Tamanho / Diâmetro do Loop */}
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider">
+                    Diâmetro do Loop
+                  </span>
+                  <span className="text-[10px] font-mono text-amber-800 font-semibold">
+                    {currentComp.width}px
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-5 gap-1">
+                  {[36, 44, 50, 60, 72].map((sz) => (
+                    <button
+                      key={sz}
+                      type="button"
+                      onClick={() => onUpdateComponent(currentComp.id, { width: sz, height: sz })}
+                      className={`py-1 text-[10px] font-mono rounded border transition-colors ${
+                        currentComp.width === sz
+                          ? 'bg-amber-600 text-white border-amber-600 font-bold'
+                          : 'bg-white text-stone-700 border-stone-200 hover:border-amber-400'
+                      }`}
+                    >
+                      {sz}px
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 

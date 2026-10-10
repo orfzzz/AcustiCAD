@@ -23,6 +23,7 @@ export type ComponentType =
   | 'generic_impedance'      // Impedância genérica (retângulo vazado sem hachura)
   
   // Anotações e Indicadores
+  | 'mesh_current'           // Corrente de malha (circulação I_1, I_a)
   | 'flow_arrow'             // Seta de vazão acústica (Q) ou corrente (I)
   | 'pressure_arrow'         // Seta de queda de pressão (P) ou tensão (V)
   | 'text_annotation';       // Texto com suporte a subscritos (ex: 1/j\omega C_a)
@@ -67,6 +68,7 @@ export interface ComponentInstance {
   flowLabel?: string;
   showPressureArrow?: boolean; // Seta P / V
   pressureLabel?: string;
+  meshDirection?: 'cw' | 'ccw'; // Sentido da circulação: 'cw' (horário) ou 'ccw' (anti-horário)
   customColor?: string;
   fontSize?: number;
   labelFontSize?: number;

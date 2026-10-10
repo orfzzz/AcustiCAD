@@ -37,12 +37,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onAddComponent, isOpen = true,
       activeTab === 'all' ||
       comp.category === activeTab ||
       (activeTab === 'acoustic' && comp.type === 'transformer') ||
-      (activeTab === 'general' && (comp.category === 'annotation' || comp.category === 'general'));
+      (activeTab === 'general' && (comp.category === 'annotation' || comp.category === 'general' || comp.type === 'mesh_current'));
     const matchesSearch =
       comp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       comp.defaultLabel.toLowerCase().includes(searchQuery.toLowerCase()) ||
       comp.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (comp.type === 'transformer' && 'trafo'.includes(searchQuery.toLowerCase()));
+      (comp.type === 'transformer' && 'trafo'.includes(searchQuery.toLowerCase())) ||
+      (comp.type === 'mesh_current' && ('malha'.includes(searchQuery.toLowerCase()) || 'loop'.includes(searchQuery.toLowerCase())));
     return matchesTab && matchesSearch;
   });
 

@@ -515,6 +515,79 @@ export const ComponentSymbol: React.FC<ComponentSymbolProps> = ({
           </g>
         );
 
+      // 16. CORRENTE NA MALHA (Mesh Current / Loop Current)
+      case 'mesh_current': {
+        const isCcw = component.meshDirection === 'ccw';
+        const cx = width / 2;
+        const cy = height / 2;
+        const r = Math.max(12, Math.min(width, height) / 2 - 5);
+
+        // Geometria da seta de circulação de corrente na malha:
+        // Arco circular cobrindo ~280 graus com abertura no topo
+        // e ponta de seta triangular perfeitamente alinhada à tangente da curva.
+        const arrowHeadLength = 6.5;
+        const arrowHeadWidth = 4.5;
+
+        // Horário (CW): começa em -140° (topo-esquerdo) e circula no sentido horário até -60° (topo-direito)
+        // Anti-horário (CCW): começa em -40° (topo-direito) e circula no sentido anti-horário até -120° (topo-esquerdo)
+        const startDeg = isCcw ? -40 : -140;
+        const endDeg = isCcw ? -120 : -60;
+        const startRad = (startDeg * Math.PI) / 180;
+        const endRad = (endDeg * Math.PI) / 180;
+
+        const xStart = cx + r * Math.cos(startRad);
+        const yStart = cy + r * Math.sin(startRad);
+        const xTip = cx + r * Math.cos(endRad);
+        const yTip = cy + r * Math.sin(endRad);
+
+        // Tangente na ponta da seta
+        const sign = isCcw ? -1 : 1;
+        const tanX = sign * -Math.sin(endRad);
+        const tanY = sign * Math.cos(endRad);
+
+        // Vetor normal à tangente
+        const normX = -tanY;
+        const normY = tanX;
+
+        // Triângulo da ponta da seta
+        const pTipX = xTip;
+        const pTipY = yTip;
+        const pBaseCenterX = xTip - tanX * arrowHeadLength;
+        const pBaseCenterY = yTip - tanY * arrowHeadLength;
+
+        const pLeftX = pBaseCenterX + normX * (arrowHeadWidth / 2);
+        const pLeftY = pBaseCenterY + normY * (arrowHeadWidth / 2);
+        const pRightX = pBaseCenterX - normX * (arrowHeadWidth / 2);
+        const pRightY = pBaseCenterY - normY * (arrowHeadWidth / 2);
+
+        // O arco termina ligeiramente antes para embutir na base da ponta da seta
+        const deltaTheta = (arrowHeadLength * 0.75) / r;
+        const arcEndRad = isCcw ? endRad + deltaTheta : endRad - deltaTheta;
+        const xArcEnd = cx + r * Math.cos(arcEndRad);
+        const yArcEnd = cy + r * Math.sin(arcEndRad);
+
+        const sweepFlag = isCcw ? 0 : 1;
+        const arcPath = `M ${xStart.toFixed(2)} ${yStart.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 1 ${sweepFlag} ${xArcEnd.toFixed(2)} ${yArcEnd.toFixed(2)}`;
+
+        return (
+          <g className="mesh-current-symbol select-none pointer-events-none">
+            {/* Arco condutor circular da malha */}
+            <path
+              d={arcPath}
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+            />
+            {/* Ponta da seta indicando o sentido de circulação */}
+            <polygon
+              points={`${pTipX.toFixed(2)},${pTipY.toFixed(2)} ${pLeftX.toFixed(2)},${pLeftY.toFixed(2)} ${pRightX.toFixed(2)},${pRightY.toFixed(2)}`}
+              fill={strokeColor}
+            />
+          </g>
+        );
+      }
+
       // 17. TEXTO LIVRE
       case 'text_annotation':
         return null;
@@ -673,15 +746,22 @@ export const ComponentSymbol: React.FC<ComponentSymbolProps> = ({
     if (!label && !sublabel && type !== 'text_annotation') return null;
 
     if (type === 'text_annotation') {
+      const annotCx = width / 2;
+      const annotCy = height / 2;
       return (
-        <SvgMathText
-          text={label || 'Texto'}
-          x={4}
-          y={15}
-          fontSize={component.fontSize || 18}
-          fill={strokeColor}
-          textAnchor="start"
-        />
+        <g
+          className="component-labels select-none pointer-events-none"
+          transform={rotation !== 0 ? `rotate(${-rotation}, ${annotCx}, ${annotCy})` : undefined}
+        >
+          <SvgMathText
+            text={label || 'Texto'}
+            x={4}
+            y={15}
+            fontSize={component.fontSize || 18}
+            fill={strokeColor}
+            textAnchor="start"
+          />
+        </g>
       );
     }
 
@@ -690,6 +770,7 @@ export const ComponentSymbol: React.FC<ComponentSymbolProps> = ({
       type === 'node' ? 'top' :
       type === 'ground' ? 'bottom' :
       type === 'transformer' ? 'top' :
+      type === 'mesh_current' ? 'center' :
       'right'
     );
     const offsetX = component.labelOffsetX || 0;
@@ -734,6 +815,10 @@ export const ComponentSymbol: React.FC<ComponentSymbolProps> = ({
           baseX = 20;
           baseY = height / 2;
           textAnchor = 'start';
+        } else if (type === 'mesh_current') {
+          baseX = width / 2;
+          baseY = height / 2;
+          textAnchor = 'middle';
         } else {
           baseX = width + 8;
           baseY = height / 2;
@@ -745,9 +830,24 @@ export const ComponentSymbol: React.FC<ComponentSymbolProps> = ({
     const finalX = baseX + offsetX;
     const finalY = baseY + offsetY;
 
+    // Cálculo da largura aproximada do texto para determinar o centro visual (pivô)
+    const approxW = Math.max(22, (label?.length || 2) * 11);
+    let pivotX = finalX;
+    let pivotY = finalY;
+
+    if (textAnchor === 'start') {
+      pivotX = finalX + approxW / 2;
+    } else if (textAnchor === 'end') {
+      pivotX = finalX - approxW / 2;
+    }
+
+    const boxW = Math.max(34, approxW + 12);
+    const boxH = sublabel ? 36 : 22;
+
     return (
       <g
         className={`component-labels select-none ${isSelected ? 'cursor-move pointer-events-auto' : 'pointer-events-none'}`}
+        transform={rotation !== 0 ? `rotate(${-rotation}, ${pivotX}, ${pivotY})` : undefined}
         onMouseDown={(e) => {
           if (isSelected && onLabelMouseDown) {
             e.stopPropagation();
@@ -758,10 +858,10 @@ export const ComponentSymbol: React.FC<ComponentSymbolProps> = ({
         {/* Caixa de destaque sutil quando o componente está selecionado para indicar que o rótulo é arrastável */}
         {isSelected && (
           <rect
-            x={finalX - (textAnchor === 'middle' ? 28 : textAnchor === 'end' ? 56 : 2) - 4}
-            y={finalY - 14}
-            width={textAnchor === 'middle' ? 56 : textAnchor === 'end' ? 58 : 54}
-            height={sublabel ? 36 : 22}
+            x={pivotX - boxW / 2}
+            y={pivotY - (sublabel ? 16 : 12)}
+            width={boxW}
+            height={boxH}
             fill="rgba(59, 130, 246, 0.04)"
             stroke="#93c5fd"
             strokeWidth={0.8}
@@ -774,21 +874,21 @@ export const ComponentSymbol: React.FC<ComponentSymbolProps> = ({
         {label && (
           <SvgMathText
             text={label}
-            x={finalX}
-            y={finalY}
+            x={pivotX}
+            y={sublabel ? pivotY - 2 : pivotY + 5}
             fontSize={component.labelFontSize || component.fontSize || 19}
             fill={strokeColor}
-            textAnchor={textAnchor}
+            textAnchor="middle"
           />
         )}
         {sublabel && (
           <SvgMathText
             text={sublabel}
-            x={finalX}
-            y={finalY + 16}
+            x={pivotX}
+            y={pivotY + 14}
             fontSize={Math.max(10, Math.round((component.labelFontSize || component.fontSize || 19) * 0.7))}
             fill="#4b5563"
-            textAnchor={textAnchor}
+            textAnchor="middle"
           />
         )}
       </g>
@@ -872,15 +972,8 @@ export const ComponentSymbol: React.FC<ComponentSymbolProps> = ({
       {/* Setas de vazão/pressão (P/Q) acopladas se ativadas */}
       {renderAnalogyArrows()}
 
-      {/* Rótulos matemáticos */}
-      {/* Contrarrotaciona rótulo se desejado para que fique legível na horizontal */}
-      {rotation !== 0 ? (
-        <g transform={`rotate(${-rotation}, ${cx}, ${cy})`}>
-          {renderLabels()}
-        </g>
-      ) : (
-        renderLabels()
-      )}
+      {/* Rótulos matemáticos: o rótulo acompanha o giro do componente e contrarrotaciona em seu pivô para manter o texto na horizontal */}
+      {renderLabels()}
 
       {/* Portas interativas */}
       {renderPorts()}

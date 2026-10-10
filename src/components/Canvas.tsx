@@ -578,10 +578,16 @@ export const Canvas: React.FC<CanvasProps> = ({
       const deltaX = (e.clientX - startMouseX) / zoom;
       const deltaY = (e.clientY - startMouseY) / zoom;
 
-      // O rótulo já é contrarrotacionado no SVG (rotate(-rotation, cx, cy)) para se manter legível na horizontal.
-      // Portanto, suas coordenadas relativas já estão alinhadas com os eixos X/Y do canvas/tela!
-      let newOffsetX = Math.round(startOffsetX + deltaX);
-      let newOffsetY = Math.round(startOffsetY + deltaY);
+      // O rótulo acompanha o giro do componente no SVG e mantém o texto horizontal.
+      // Projetamos o deslocamento do mouse (espaço da tela) no sistema local do componente:
+      const rad = (-comp.rotation * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const localDeltaX = deltaX * cos - deltaY * sin;
+      const localDeltaY = deltaX * sin + deltaY * cos;
+
+      let newOffsetX = Math.round(startOffsetX + localDeltaX);
+      let newOffsetY = Math.round(startOffsetY + localDeltaY);
 
       if (snapGrid) {
         newOffsetX = Math.round(newOffsetX / 4) * 4;
